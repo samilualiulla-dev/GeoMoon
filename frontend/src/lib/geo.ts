@@ -59,8 +59,8 @@ export function velocityVectorEnu(azimuthDeg: number, fpaDeg: number, speed = 1)
   return { e: speed * Math.cos(g) * Math.sin(az), n: speed * Math.cos(g) * Math.cos(az), u: speed * Math.sin(g) }
 }
 
-export function formatLat(lat: number): string { return `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}` }
-export function formatLon(lon: number): string { const w = wrapLon(lon); return `${Math.abs(w).toFixed(4)}° ${w >= 0 ? 'E' : 'W'}` }
+export function formatLat(lat: number): string { return `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'с. ш.' : 'ю. ш.'}` }
+export function formatLon(lon: number): string { const w = wrapLon(lon); return `${Math.abs(w).toFixed(4)}° ${w >= 0 ? 'в. д.' : 'з. д.'}` }
 
 /** Is (lat, lon) inside a dataset's reported coverage box? (advisory only — the core is authoritative) */
 export function inCoverageBox(lat: number, lon: number, cov: { lat_range_deg: [number, number] | null; lon_range_deg: [number, number] | null }): boolean {
@@ -70,4 +70,21 @@ export function inCoverageBox(lat: number, lon: number, cov: { lat_range_deg: [n
   const w = wrapLon(lon)
   const lonOk = (w >= c && w <= d) || (w + 360 >= c && w + 360 <= d)
   return lat >= a && lat <= b && lonOk
+}
+
+
+/** East/North/Up unit vectors (expressed in the body-fixed frame) at a surface point. */
+export function enuBasisBF(latDeg: number, lonDeg: number): { e: [number, number, number]; n: [number, number, number]; u: [number, number, number] } {
+  const la = latDeg * D2R, lo = lonDeg * D2R
+  return {
+    e: [-Math.sin(lo), Math.cos(lo), 0],
+    n: [-Math.sin(la) * Math.cos(lo), -Math.sin(la) * Math.sin(lo), Math.cos(la)],
+    u: [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)],
+  }
+}
+
+/** Express a body-fixed vector in the local ENU frame at (lat, lon). Drawing helper (unit/frame conversion only). */
+export function bfToEnu(v: [number, number, number], basis: ReturnType<typeof enuBasisBF>): { east: number; north: number; up: number } {
+  const d = (a: number[]) => v[0] * a[0] + v[1] * a[1] + v[2] * a[2]
+  return { east: d(basis.e), north: d(basis.n), up: d(basis.u) }
 }

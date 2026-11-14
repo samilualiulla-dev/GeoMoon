@@ -20,16 +20,16 @@ The dev server proxies `/api` to `http://127.0.0.1:8000` (override with `GEOMOON
 | `npm test` | Vitest unit tests (geometry, validation, payload builders, HTTP layer, series/CSV) |
 | `node e2e/smoke.cjs` | Playwright end-to-end walkthrough of all pages against a live core (see below) |
 
-## Pages
+## Pages (Russian UI)
 | Route | What it does |
 |---|---|
-| `/` Dashboard | core status, installed DEM counts (real vs synthetic), current target, saved missions/vehicles/regions, recent studies; empty states when nothing exists |
-| `/explorer` Lunar Explorer | 3-D sphere (plain reference sphere, or displaced by real global elevation when a global DEM is installed) with lat/lon grid, dataset coverage outlines, saved regions, click-to-select coordinates; probe elevation, load **real regional relief** as a displaced 3-D mesh, save regions |
-| `/terrain` Terrain Analysis | region/criteria form → `POST /terrain/analyze`; layers (elevation, slope, roughness, local relief, hazard, suitability, site classes) with toggles, opacity, legend, units, source; hover read-out; 3-D relief coloured by any layer; candidate sites with score explanation; weights re-run the analysis live |
-| `/spacecraft` Spacecraft | validated vehicle form (units, bounds and their origin in tooltips) + descent scenario/burn plan (constant, time-varying schedule, cut-off); derived values come from the core; ignition-altitude suggestion from the core |
-| `/simulation` Landing Simulation | creates + runs a simulation on the core, polls its status, replays the returned time series in 3-D (terrain from the DEM, trajectory, lander, flame) with Start / Pause / Resume / Reset / Replay, speed, scrubber, live telemetry, 6 charts, full landing assessment, save as mission, CSV/JSON export |
-| `/reports` Mission Reports | saved missions, full report view, comparison of 2+ missions, export JSON / CSV / time-series CSV / PDF (browser print → “Save as PDF”), open in simulation |
-| `/data` Data Sources | installed datasets with provenance, coverage, resolution, version, warnings; known real products (LOLA, SLDEM2015, LROC, Moon Trek/ODE) with status and usage limits; rejected files |
+| `/` Обзор | core status, installed DEM counts (real vs synthetic), current target, selected vehicle, saved missions/vehicles/regions, recent studies; empty states when nothing exists |
+| `/explorer` Исследование Луны | 3-D globe: natural lunar grey displaced by REAL global elevation (or a plain sphere when none is installed), 30° grid, DEM-coverage outlines, markers, search by place name / coordinates, click-to-select; DEM availability + provenance card for the point; probe elevation; regional relief mesh; saved regions |
+| `/terrain` Анализ рельефа | region/criteria form → `POST /terrain/analyze`; 7 layers (elevation, slope, roughness, local relief, hazard map, suitability, site classes) with toggles/opacity/legend/units/source; 3-D relief in natural colour or by any layer; weights re-run the analysis; candidate sites with score explanation |
+| `/spacecraft` Аппараты | catalogue of vehicle configurations: view characteristics (computed by the core), create / edit / copy / delete (with confirmation; the core refuses to edit/delete used vehicles), compare up to 4, DEMO templates clearly labelled |
+| `/simulation` Симуляция посадки | 3-column workspace: scenario (vehicle, target, initial state, velocity vector, burn plan, per-run vehicle overrides, settings) · 3-D scene (real DEM relief, lander, trajectory, start/touchdown, altitude line, velocity & thrust vectors, grid, camera presets/follow/FOV, layer toggles) · telemetry; bottom timeline with Start/Pause/Resume/Reset/Replay, speed, scrubbing and event markers; 6 charts; full landing assessment; save as mission |
+| `/reports` Отчёты миссий | saved missions, full report with trajectory charts, comparison of 2+ missions, export JSON / CSV / time-series CSV / PDF (browser print), open in simulation |
+| `/data` Источники данных | installed datasets with provenance, coverage, resolution, version, import date, status, limits; known real products; rejected files |
 
 ## Structure
 ```
@@ -58,7 +58,7 @@ GEOMOON_DEM_DIR=/tmp/geomoon-demo/dem GEOMOON_STORAGE_DIR=/tmp/geomoon-demo/stor
   GEOMOON_DATABASE_URL=sqlite:////tmp/geomoon-demo/e2e.db uvicorn app.asgi:app --port 8000   # from ../backend
 npm i -D playwright && npx playwright install chromium     # one time
 npm run dev &                                              # then:
-node e2e/smoke.cjs        # 42 checks across all pages, exports, WebGL, mobile overflow, console errors
+node e2e/smoke.cjs        # 60 checks across all pages, CRUD, exports, WebGL, mobile overflow, console errors
 node e2e/offline.cjs      # stop the core first: verifies honest error states
 node e2e/coarse_real_dem.cjs  # real coarse DEM (LDEM_16): radius auto-fix, relief, simulation with enlarged terrain window
 node e2e/real_data.cjs    # with a REAL LDEM_16 imported: globe relief, Apollo 11 probe (-1.9 km), south-pole analysis
@@ -66,7 +66,9 @@ node e2e/real_data.cjs    # with a REAL LDEM_16 imported: globe relief, Apollo 1
 
 ## Known limitations
 * The globe shows relief only if a global elevation DEM (e.g. LOLA `LDEM_16`) is installed; one 180×360 block-averaged grid, no tiling/LOD yet.
-* The lander is drawn upright and enlarged; attitude is not simulated by the core.
+* The lander is drawn upright and enlarged; attitude is not simulated by the core. The thrust arrow uses the core's `thrust_dir_*` series.
+* "Natural colour" is a conventional lunar grey (brighter = higher); it is not measured albedo. The shading itself comes from the real DEM.
+* UI language is Russian; messages produced by the core are translated for display (unknown messages are shown as received).
 * PDF export uses the browser's print dialog (print stylesheet), not a server-side PDF.
 * Mission comparison compares stored missions' metrics; it does not re-run analyses.
 * Bundle is ~1.3 MB (Three.js); routes are lazy-loaded.

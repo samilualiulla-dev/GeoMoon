@@ -69,6 +69,7 @@ class SimulationCreate(BaseModel):
 
 class SpacecraftIn(SpacecraftConfig):
     user_id: Optional[int] = None
+    is_demo: bool = False
 
 
 class LandingEvaluateRequest(BaseModel):

@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..context import AppContext
-from ..core.errors import NotFoundError, ValidationFailure
+from ..core.errors import ConflictError, NotFoundError, ValidationFailure
 from ..db import models as M
 from ..simulation import manager as mgr
 from ..trajectory.planning import suggest_vertical_ignition_altitude
@@ -20,7 +20,7 @@ def _sc_json(r: M.SpacecraftConfiguration):
     return {"id": r.id, "user_id": r.user_id, "name": r.name, "dry_mass_kg": r.dry_mass, "fuel_mass_kg": r.fuel_mass,
             "dimensions": r.dimensions, "landing_gear": r.landing_gear, "engine": r.engine_parameters,
             "constraints": r.landing_constraints, "derived": cfg.derived(), "warnings": cfg.warnings(),
-            "created_at": r.created_at.isoformat()}
+            "is_demo": bool(r.is_demo), "created_at": r.created_at.isoformat()}
 
 
 @router.post("/spacecraft", status_code=201, tags=["spacecraft"])
@@ -30,7 +30,8 @@ def create_spacecraft(body: SpacecraftIn, db: Session = Depends(get_db)):
         raise NotFoundError(f"user {uid} not found")
     cfg = body.model_copy(); data = cfg.model_dump(exclude={"user_id"})
     from ..spacecraft.schemas import SpacecraftConfig
-    row = mgr.save_spacecraft(db, SpacecraftConfig(**data), uid)
+    data.pop("is_demo", None)
+    row = mgr.save_spacecraft(db, SpacecraftConfig(**data), uid, is_demo=body.is_demo)
     return _sc_json(row)
 
 
@@ -45,6 +46,39 @@ def get_spacecraft(sid: int, db: Session = Depends(get_db)):
     if r is None:
         raise NotFoundError(f"spacecraft {sid} not found")
     return _sc_json(r)
+
+
+@router.put("/spacecraft/{sid}", tags=["spacecraft"])
+def update_spacecraft(sid: int, body: SpacecraftIn, db: Session = Depends(get_db)):
+    """Edit a configuration in place. Refused (409) once simulations or missions use it, so stored results stay reproducible:
+    save a new configuration instead."""
+    r = db.get(M.SpacecraftConfiguration, sid)
+    if r is None:
+        raise NotFoundError(f"spacecraft {sid} not found")
+    use = mgr.spacecraft_usage(db, sid)
+    if use["simulations"] or use["missions"]:
+        raise ConflictError(f"spacecraft {sid} is used by {use['simulations']} simulation(s) and {use['missions']} mission(s) and cannot be edited; save a copy instead",
+                            details=use)
+    from ..spacecraft.schemas import SpacecraftConfig
+    cfg = SpacecraftConfig(**body.model_dump(exclude={"user_id", "is_demo"}))
+    r.name, r.dry_mass, r.fuel_mass = cfg.name, cfg.dry_mass_kg, cfg.fuel_mass_kg
+    r.dimensions, r.engine_parameters = cfg.dimensions.model_dump(), cfg.engine.model_dump()
+    r.landing_constraints, r.landing_gear, r.is_demo = cfg.constraints.model_dump(), cfg.landing_gear.model_dump(), body.is_demo
+    db.commit()
+    return _sc_json(r)
+
+
+@router.delete("/spacecraft/{sid}", tags=["spacecraft"])
+def delete_spacecraft(sid: int, db: Session = Depends(get_db)):
+    """Delete an unused configuration (409 if simulations or missions reference it)."""
+    r = db.get(M.SpacecraftConfiguration, sid)
+    if r is None:
+        raise NotFoundError(f"spacecraft {sid} not found")
+    use = mgr.spacecraft_usage(db, sid)
+    if use["simulations"] or use["missions"]:
+        raise ConflictError(f"spacecraft {sid} is used by {use['simulations']} simulation(s) and {use['missions']} mission(s) and cannot be deleted", details=use)
+    db.delete(r); db.commit()
+    return {"deleted": sid}
 
 
 @router.post("/trajectory/suggest-ignition", tags=["trajectory"])

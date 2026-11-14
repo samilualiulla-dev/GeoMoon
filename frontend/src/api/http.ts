@@ -45,7 +45,7 @@ export function buildUrl(path: string, query?: RequestOptions<unknown>['query'],
   return `${base}${path}${s ? `?${s}` : ''}`
 }
 
-export async function request<T>(method: 'GET' | 'POST', path: string, opts: RequestOptions<T> = {}): Promise<T> {
+export async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, opts: RequestOptions<T> = {}): Promise<T> {
   const { timeoutMs = 30_000, signal } = opts
   const ctrl = new AbortController()
   let timedOut = false

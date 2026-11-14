@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { DatasetInfo, GlobeData, Region } from '../../api/types'
 import { latLonToThree, threeToLatLon } from '../../lib/geo'
-import { buildGlobeGeometry } from '../../lib/globeMesh'
+import { buildGlobeGeometry, type GlobeColorMode } from '../../lib/globeMesh'
 
 function graticule(stepDeg: number): THREE.Vector3[][] {
   const lines: THREE.Vector3[][] = []
@@ -69,23 +69,24 @@ export interface GlobeProps {
   /** real (or flagged-synthetic) global elevation grid from the core; null => plain reference sphere */
   globe?: GlobeData | null
   exaggeration?: number
+  colorMode?: GlobeColorMode
 }
 
 /**
  * Reference sphere with graticule, dataset coverage outlines, regions and the selected point.
  * IMPORTANT: no global DEM is displaced onto this sphere (none is installed). Real relief is shown in the Regional relief view.
  */
-export function MoonGlobe({ selected, onSelect, onHover, showGrid, datasets, regions, candidates, focusSignal, globe = null, exaggeration = 10 }: GlobeProps) {
+export function MoonGlobe({ selected, onSelect, onHover, showGrid, datasets, regions, candidates, focusSignal, globe = null, exaggeration = 10, colorMode = 'natural' }: GlobeProps) {
   const surface = useMemo(() => {
     if (!globe) return null
-    const d = buildGlobeGeometry(globe, exaggeration)
+    const d = buildGlobeGeometry(globe, exaggeration, colorMode)
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3))
     g.setAttribute('color', new THREE.BufferAttribute(d.colors, 3))
     g.setIndex(new THREE.BufferAttribute(d.indices, 1))
     g.computeVertexNormals(); g.computeBoundingSphere()
     return g
-  }, [globe, exaggeration])
+  }, [globe, exaggeration, colorMode])
   useEffect(() => () => surface?.dispose(), [surface])
   const grid = useMemo(() => graticule(30), [])
   const outlines = useMemo(() => datasets.map((d) => ({ d, pts: coverageOutline(d) })).filter((x) => x.pts), [datasets])
@@ -99,13 +100,14 @@ export function MoonGlobe({ selected, onSelect, onHover, showGrid, datasets, reg
   return (
     <Canvas camera={{ position: [0, 0.9, 3.6], fov: 40, near: 0.01, far: 100 }} dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: true }}>
       <color attach="background" args={['#04070d']} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[5, 3, 4]} intensity={2.2} />
+      <ambientLight intensity={0.28} />
+      <hemisphereLight args={["#bcd0ee", "#1a1510", 0.35]} />
+      <directionalLight position={[5, 3, 4]} intensity={2.4} />
       <mesh onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }} onClick={handleClick}
         onPointerMove={(e) => { if (onHover) { const p = threeToLatLon(e.point); onHover(p) } }} onPointerOut={() => onHover?.(null)}>
         {/* distinct keys force a fresh material: toggling vertexColors/colour on a live material would reset it to black */}
         {surface ? <primitive key="relief-geo" object={surface} attach="geometry" /> : <sphereGeometry key="plain-geo" args={[1, 96, 96]} />}
-        {surface ? <meshStandardMaterial key="relief-mat" vertexColors roughness={0.95} metalness={0} /> : <meshStandardMaterial key="plain-mat" color="#8a8d94" roughness={1} metalness={0} />}
+        {surface ? <meshStandardMaterial key="relief-mat" vertexColors roughness={0.95} metalness={0} /> : <meshStandardMaterial key="plain-mat" color="#8f8b84" roughness={1} metalness={0} />}
       </mesh>
       {showGrid && grid.map((pts, i) => <Line key={i} points={pts} color="#3b82f6" lineWidth={0.6} transparent opacity={0.45} />)}
       {outlines.map(({ d, pts }) => <Line key={d.id} points={pts!} color={d.synthetic ? '#eab308' : '#22d3ee'} lineWidth={1.6} />)}

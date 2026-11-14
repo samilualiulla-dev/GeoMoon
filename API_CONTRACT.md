@@ -25,7 +25,7 @@ Base URL: `http://localhost:8000/api` · JSON · OpenAPI UI: `/docs` · schema: 
 Installed DEMs with provenance + catalogue of known real products + files rejected (with reason).
 ```json
 {"installed":[{"id":"synthetic_demo_dem","name":"…","provider":"…","product":"…","version":"1","citation":"…","url":"…",
-  "resolution_m_per_px":20.0,"coverage":{"lat_range_deg":[0.60,1.0],"lon_range_deg":[23.0,23.39],"includes_pole":false,"nominal":null},
+  "resolution_m_per_px":20.0,"installed_at":"2026-11-14T19:12:02+00:00","coverage":{"lat_range_deg":[0.60,1.0],"lon_range_deg":[23.0,23.39],"includes_pole":false,"nominal":null},
   "crs":"<WKT>","is_geographic_crs":true,"shape_rows_cols":[600,600],"elevation_unit":"m","vertical_reference_radius_m":1737400.0,
   "synthetic":true,"quantity":"elevation","unit":"m","usable_as_dem":true,"status":"available","warnings":["…"],"file":"synthetic_demo_dem.tif"}],
  "rejected_files":{"x.tif":"x.tif: missing provenance sidecar x.meta.json"},
@@ -96,6 +96,10 @@ Stored analysis summary (slope/roughness/relief/hazard/suitability results + par
 Response adds `id`, `derived` (`total_mass_kg, thrust_to_weight_lunar_surface, effective_isp_s, mass_flow_full_throttle_kg_s, max_burn_time_s, delta_v_ideal_m_s, footprint_radius_m, tipping_angle_deg, max_tilt_deg_used`), `warnings[]`, `created_at`.
 Validation: all masses/dimensions > 0, extra fields rejected → 422 with per-field errors.
 
+### `PUT /spacecraft/{id}` · `DELETE /spacecraft/{id}`
+Edit / delete a saved configuration. Body of PUT = the POST body (incl. optional `is_demo`). Both answer `409 conflict` with `details:{simulations,missions}` once simulations or missions use the vehicle, so stored results stay reproducible (save a copy instead). DELETE → `{"deleted": id}`.
+`is_demo: true` marks demonstration configurations (illustrative numbers, not real spacecraft); it is returned by every spacecraft endpoint.
+
 ### `POST /trajectory/suggest-ignition`
 `{"spacecraft_id":1 | "spacecraft":{…}, "initial_altitude_m":10000,"initial_speed_m_s":100,"throttle":1,"margin":1.05}` →
 `{"feasible":true,"ignition_altitude_m":5250.7,"constant_decel_m_s2":2.54,"speed_at_ignition_m_s":159.5,"burn_time_s":62.7,"fuel_needed_kg":106.6,"fuel_available_kg":300,"margin":1.05,"note":"…advisory only"}`.
@@ -131,7 +135,7 @@ Simulation object; when completed also `summary`.
 * `t=<seconds>` → `{"simulation_id","t_s","state":{<every time-series column interpolated>}}` (intermediate state)
 * 422 until the simulation is completed (`details.status`, `details.error`).
 
-`time_series` columns (arrays): `time_s, position_{x,y,z}_m (BF), velocity_{x,y,z}_m_s (BF, surface-relative), inertial_position_{x,y,z}_m, inertial_velocity_{x,y,z}_m_s, latitude_deg, longitude_deg, altitude_m (above reference sphere), distance_to_surface_m (above local DEM surface), speed_surface_m_s, vertical_speed_m_s (+up), horizontal_speed_m_s, acceleration_m_s2 (total |a|), proper_acceleration_m_s2 (thrust/mass), thrust_n, throttle, mass_kg, fuel_remaining_kg, distance_to_target_m`.
+`time_series` columns (arrays; `thrust_dir_{x,y,z}` = unit vector of the thrust force in the body-fixed frame, zeros while the engine is off): `time_s, position_{x,y,z}_m (BF), velocity_{x,y,z}_m_s (BF, surface-relative), inertial_position_{x,y,z}_m, inertial_velocity_{x,y,z}_m_s, latitude_deg, longitude_deg, altitude_m (above reference sphere), distance_to_surface_m (above local DEM surface), speed_surface_m_s, vertical_speed_m_s (+up), horizontal_speed_m_s, acceleration_m_s2 (total |a|), proper_acceleration_m_s2 (thrust/mass), thrust_n, throttle, mass_kg, fuel_remaining_kg, distance_to_target_m`.
 `trajectory = {frame:"body_fixed",units:"m",points_xyz:[[x,y,z],…](≤~2000),time_s:[…],target:{…},terrain_dataset,terrain_synthetic}`.
 `summary` = `{termination_reason: "touchdown"|"max_time_reached", duration_s, touchdown:{latitude_deg,longitude_deg,time_s,vertical_speed_m_s,horizontal_speed_m_s,speed_m_s,flight_path_angle_deg,miss_distance_m,surface_height_m,mass_kg}|null, fuel_used_kg, fuel_remaining_kg, peak_proper_acceleration_m_s2, events[], integrator, frames, assumptions[], limitations[], warnings[], spacecraft_derived, terrain_used, terrain_synthetic}`.
 

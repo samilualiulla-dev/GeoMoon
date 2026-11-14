@@ -1,69 +1,117 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/endpoints'
-import type { SimStatus, TerrainWindow } from '../api/types'
+import type { IgnitionSuggestion, SimStatus, TerrainWindow } from '../api/types'
 import { AssessmentPanel } from '../components/simulation/AssessmentPanel'
 import { Charts } from '../components/simulation/Charts'
-import { SimScene } from '../components/simulation/SimScene'
+import type { CamCmd, CamPreset } from '../components/simulation/SceneCanvas'
+import { SceneToolbar } from '../components/simulation/SceneToolbar'
+import { ScenarioPanel, useOverrideErrors, useScenarioErrors, useTargetErrors } from '../components/simulation/ScenarioPanel'
+import { DEFAULT_LAYERS, SimScene, type SceneLayers, type TrajMode } from '../components/simulation/SimScene'
 import { Telemetry } from '../components/simulation/Telemetry'
-import { useScenarioErrors } from '../components/spacecraft/ScenarioFormView'
-import { Badge, Button, Empty, ErrorBanner, Panel, SelectField, Spinner, Stat, SyntheticNotice } from '../components/ui/ui'
+import { Timeline } from '../components/simulation/Timeline'
+import { Badge, Button, Empty, ErrorBanner, PageHeader, Panel, Spinner, Stat, SyntheticNotice, TextField } from '../components/ui/ui'
 import { asApiError, useFetch } from '../hooks/useFetch'
-import { usePlayback } from '../hooks/usePlayback'
-import { fmt, fmtDuration, humanize } from '../lib/format'
+import { playback, useBindPlayback } from '../hooks/usePlayback'
+import { EVENT_RU, OVERALL_RU, SIM_STATUS_RU, TERMINATION_RU, label, tr } from '../i18n/ru'
+import { download, timeSeriesToCsv } from '../lib/csv'
+import { pickDataset } from '../lib/datasets'
+import { fmt } from '../lib/format'
 import { formatLat, formatLon } from '../lib/geo'
 import { buildSimulationCreate } from '../lib/payload'
-import { download, timeSeriesToCsv } from '../lib/csv'
+import { OVERRIDE_KEYS, applyOverrides, overridesDiffer, overridesFrom, type Overrides } from '../lib/vehicle'
 import { useInputs, useSession } from '../store/appStore'
-
-const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25]
+import { centerElevation } from '../components/simulation/SimScene'
 
 export default function SimulationPage() {
   const inputs = useInputs()
   const { simulation, results, setSimulation, setResults } = useSession()
-  const scErr = useScenarioErrors(inputs.scenario)
   const vehicles = useFetch(() => api.spacecraftList(), [])
+  const sources = useFetch(() => api.dataSources(), [])
+  const scErr = useScenarioErrors(inputs.scenario)
+  const [showErr, setShowErr] = useState(false)
   const [status, setStatus] = useState<SimStatus | 'idle'>('idle')
   const [error, setError] = useState<unknown>(null)
   const [terrain, setTerrain] = useState<TerrainWindow | null>(null)
   const [terrainNote, setTerrainNote] = useState<string | null>(null)
-  const [exag, setExag] = useState(1)
+  const [preview, setPreview] = useState<TerrainWindow | null>(null)
+  const [previewErr, setPreviewErr] = useState<string | null>(null)
+  const [layers, setLayers] = useState<SceneLayers>(DEFAULT_LAYERS)
+  const [trajMode, setTrajMode] = useState<TrajMode>('full')
+  const [cam, setCam] = useState<CamCmd>({ preset: 'frame', nonce: 1 })
+  const [fov, setFov] = useState(45)
+  const [exag, setExag] = useState(2)
+  const [follow, setFollow] = useState(false)
   const [missionName, setMissionName] = useState('')
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [suggestion, setSuggestion] = useState<IgnitionSuggestion | null>(null)
+  const [suggesting, setSuggesting] = useState(false)
   const cancel = useRef(false)
   const autoPlay = useRef(false)
 
-  const duration = results ? results.time_series.time_s[results.time_series.time_s.length - 1] : 0
-  const pb = usePlayback(duration)
-  const vehicle = vehicles.data?.find((v) => v.id === inputs.spacecraftId) ?? null
-  const busy = status === 'queued' || status === 'running'
+  // ---- target text fields (store keeps the validated numbers)
+  const [latS, setLatS] = useState(String(inputs.target.lat)), [lonS, setLonS] = useState(String(inputs.target.lon))
+  const targetErrors = useTargetErrors(latS, lonS)
+  useEffect(() => { if (Number(latS) !== inputs.target.lat) setLatS(String(inputs.target.lat)); if (Number(lonS) !== inputs.target.lon) setLonS(String(inputs.target.lon)) }, [inputs.target]) // eslint-disable-line react-hooks/exhaustive-deps
+  const onTarget = (la: string, lo: string) => { setLatS(la); setLonS(lo); const a = Number(la), b = Number(lo); if (la.trim() && lo.trim() && Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && b >= -180 && b <= 360) inputs.setTarget(a, b) }
 
+  // ---- vehicle + per-run overrides
+  const vehicle = vehicles.data?.find((v) => v.id === inputs.spacecraftId) ?? null
+  const [overrides, setOverrides] = useState<Overrides | null>(null)
+  useEffect(() => { setOverrides(vehicle ? overridesFrom(vehicle) : null) }, [vehicle?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const overrideErrors = useOverrideErrors(overrides)
+
+  const duration = results ? results.time_series.time_s[results.time_series.time_s.length - 1] : 0
+  useBindPlayback(duration)
+  const busy = status === 'queued' || status === 'running'
   useEffect(() => () => { cancel.current = true }, [])
-  // Start the replay once the freshly loaded results (and therefore the duration) are in effect.
+  useEffect(() => { if (results && duration > 0 && autoPlay.current) { autoPlay.current = false; playback.start() } }, [results, duration]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- real DEM preview around the target (before any run)
+  const datasets = sources.data?.installed ?? []
+  const dataset = useMemo(() => pickDataset(datasets, inputs.target.lat, inputs.target.lon, { datasetId: inputs.datasetId, allowSynthetic: inputs.allowSynthetic }), [datasets, inputs.target, inputs.datasetId, inputs.allowSynthetic])
+  const previewRadius = dataset ? Math.min(Math.max(Number(inputs.scenario.terrain_radius_m) || 1500, 10 * (dataset.resolution_m_per_px ?? 0)), 50000) : null
   useEffect(() => {
-    if (results && duration > 0 && autoPlay.current) { autoPlay.current = false; pb.start() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, duration])
+    if (!dataset || !previewRadius || results || !inputs.scenario.terrain_enabled) { setPreview(null); setPreviewErr(null); return }
+    const ctrl = new AbortController()
+    const id = setTimeout(() => {
+      api.terrain({ latitude_deg: inputs.target.lat, longitude_deg: inputs.target.lon, radius_m: previewRadius, dataset_id: inputs.datasetId, max_grid: 140, allow_synthetic: inputs.allowSynthetic }, ctrl.signal)
+        .then((w) => { setPreview(w); setPreviewErr(null) }).catch((e) => { if (!ctrl.signal.aborted) { setPreview(null); setPreviewErr(tr(asApiError(e).describe())) } })
+    }, 400)
+    return () => { clearTimeout(id); ctrl.abort() }
+  }, [dataset?.id, inputs.target, previewRadius, inputs.datasetId, inputs.allowSynthetic, !!results, inputs.scenario.terrain_enabled]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadTerrain = useCallback(async (res: NonNullable<typeof results>) => {
     setTerrain(null); setTerrainNote(null)
-    if (!res.summary.terrain_used) { setTerrainNote(res.summary.warnings.find((w) => w.startsWith('Terrain')) ?? 'The core had no terrain data for this run.'); return }
+    if (!res.summary.terrain_used) { setTerrainNote(tr(res.summary.warnings.find((w) => w.startsWith('Terrain')) ?? 'Для этого запуска у ядра не было данных рельефа.')); return }
     try {
-      const sc = inputs.scenario
-      setTerrain(await api.terrain({ latitude_deg: res.trajectory.target.latitude_deg, longitude_deg: res.trajectory.target.longitude_deg, radius_m: res.summary.terrain_radius_m ?? Number(sc.terrain_radius_m), dataset_id: res.summary.terrain_dataset ?? inputs.datasetId, max_grid: 160, allow_synthetic: inputs.allowSynthetic }))
-    } catch (e) { setTerrainNote(`Terrain view unavailable: ${asApiError(e).describe()}`) }
+      setTerrain(await api.terrain({ latitude_deg: res.trajectory.target.latitude_deg, longitude_deg: res.trajectory.target.longitude_deg, radius_m: res.summary.terrain_radius_m ?? Number(inputs.scenario.terrain_radius_m),
+        dataset_id: res.summary.terrain_dataset ?? inputs.datasetId, max_grid: 160, allow_synthetic: inputs.allowSynthetic }))
+    } catch (e) { setTerrainNote(`Вид рельефа недоступен: ${tr(asApiError(e).describe())}`) }
   }, [inputs.scenario, inputs.datasetId, inputs.allowSynthetic])
 
+  const suggest = async () => {
+    if (inputs.spacecraftId === null) return
+    setSuggesting(true); setSuggestion(null)
+    try { setSuggestion(await api.suggestIgnition({ spacecraft_id: inputs.spacecraftId, initial_altitude_m: Number(inputs.scenario.initial_altitude_m), initial_speed_m_s: Number(inputs.scenario.initial_speed_m_s), throttle: Number(inputs.scenario.throttle) || 1 })) }
+    catch (e) { setError(e) } finally { setSuggesting(false) }
+  }
+
   const runSimulation = async () => {
-    setError(null)
-    if (Object.keys(scErr).length) { setError(new Error('Scenario has invalid fields — fix them on the Spacecraft page.')); return }
-    if (inputs.spacecraftId === null) { setError(new Error('Select or save a vehicle first.')); return }
+    setError(null); setShowErr(true)
+    const bad = Object.keys(scErr).length + Object.keys(overrideErrors).length + (targetErrors.lat || targetErrors.lon ? 1 : 0)
+    if (bad) { setError(new Error(`Исправьте ошибки в параметрах (${bad}) — они выделены в левой панели.`)); return }
+    if (inputs.spacecraftId === null || !vehicle) { setError(new Error('Выберите аппарат в левой панели.')); return }
     cancel.current = false
-    pb.reset(); setResults(null); setTerrain(null); setSaveMsg(null)
+    playback.reset(); setResults(null); setTerrain(null); setSaveMsg(null)
     try {
       setStatus('queued')
-      const body = buildSimulationCreate({ spacecraftId: inputs.spacecraftId, regionId: inputs.regionId, scenario: inputs.scenario, target: inputs.target,
-        allowSynthetic: inputs.allowSynthetic, datasetId: inputs.datasetId, terrainParams: null })
+      let vehicleId = vehicle.id
+      if (overrides && overridesDiffer(vehicle, overrides)) {
+        const copy = await api.createSpacecraft({ ...applyOverrides(vehicle, overrides), name: `${vehicle.name} (для запуска)`, is_demo: vehicle.is_demo })
+        vehicleId = copy.id; inputs.setSpacecraftId(copy.id); vehicles.reload()
+      }
+      const body = buildSimulationCreate({ spacecraftId: vehicleId, regionId: inputs.regionId, scenario: inputs.scenario, target: inputs.target, allowSynthetic: inputs.allowSynthetic, datasetId: inputs.datasetId, terrainParams: null })
       const sim = await api.createSimulation(body)
       setSimulation(sim)
       await api.runSimulation(sim.id)
@@ -73,120 +121,141 @@ export default function SimulationPage() {
         const s = await api.simulation(sim.id)
         setStatus(s.status); setSimulation(s)
         if (s.status === 'completed') break
-        if (s.status === 'failed') throw new Error(`Simulation failed on the core: ${s.error ?? 'no reason given'}`)
-        if (Date.now() - t0 > 5 * 60_000) throw new Error('Timed out waiting for the simulation (5 min).')
+        if (s.status === 'failed') throw new Error(`Симуляция завершилась ошибкой на ядре: ${tr(s.error ?? 'причина не указана')}`)
+        if (Date.now() - t0 > 5 * 60_000) throw new Error('Превышено время ожидания симуляции (5 мин).')
         await new Promise((r) => setTimeout(r, 600))
       }
       const res = await api.simulationResults(sim.id)
       await loadTerrain(res)
       autoPlay.current = true
       setResults(res)
-      setMissionName(`Landing @ ${formatLat(res.trajectory.target.latitude_deg)} ${formatLon(res.trajectory.target.longitude_deg)}`)
+      setCam((c) => ({ preset: 'frame', nonce: c.nonce + 1 }))
+      setMissionName(`Посадка ${formatLat(res.trajectory.target.latitude_deg)} ${formatLon(res.trajectory.target.longitude_deg)}`)
     } catch (e) { setError(e); setStatus('failed') }
   }
 
   const saveMission = async () => {
     if (!simulation) return
     setSaveMsg(null)
-    try { const m = await api.createMission({ name: missionName.trim(), simulation_id: simulation.id, spacecraft_id: simulation.spacecraft_id, region_id: inputs.regionId }); setSaveMsg(`Saved as mission #${m.id} — open it in Mission Reports.`) }
-    catch (e) { setSaveMsg(asApiError(e).describe()) }
+    try { const m = await api.createMission({ name: missionName.trim(), simulation_id: simulation.id, spacecraft_id: simulation.spacecraft_id, region_id: inputs.regionId }); setSaveMsg(`Сохранено как миссия №${m.id} — откройте её в разделе «Отчёты миссий».`) }
+    catch (e) { setSaveMsg(tr(asApiError(e).describe())) }
   }
 
   const td = results?.summary.touchdown
-  const syntheticRun = results?.summary.terrain_synthetic
-  const overallTone = useMemo(() => (results ? (results.landing_assessment.overall === 'limits_exceeded' ? 'bad' : results.landing_assessment.overall === 'within_all_assessed_limits' ? 'ok' : 'warn') : 'neutral'), [results])
+  const terrainWin = results ? terrain : preview
+  const syntheticRun = results ? results.summary.terrain_synthetic : preview?.provenance.synthetic
+  const overallTone = results ? (results.landing_assessment.overall === 'limits_exceeded' ? 'bad' : results.landing_assessment.overall === 'within_all_assessed_limits' ? 'ok' : 'warn') : 'neutral'
+  const setPreset = (p: CamPreset) => setCam((c) => ({ preset: p, nonce: c.nonce + 1 }))
+  const centerZ = terrainWin ? centerElevation(terrainWin.elevation_m) : null
+  const modified = OVERRIDE_KEYS.length > 0 && vehicle && overrides ? overridesDiffer(vehicle, overrides) : false
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-lg font-semibold">Landing simulation</h1>
-          <p className="text-xs text-muted">The trajectory is integrated on the core; this page only requests it and replays the returned time series.</p></div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="w-56"><SelectField label="Vehicle" id="vehicle" value={String(inputs.spacecraftId ?? '')} onChange={(v) => inputs.setSpacecraftId(v === '' ? null : Number(v))} disabled={busy}
-            options={[{ value: '', label: vehicles.loading ? 'loading…' : '— select saved vehicle —' }, ...(vehicles.data ?? []).map((v) => ({ value: String(v.id), label: `#${v.id} ${v.name}` }))]} /></div>
-          <Button variant="primary" onClick={runSimulation} disabled={busy} data-testid="start">{busy ? <Spinner label={status === 'queued' ? 'Queued…' : 'Running on core…'} /> : results ? 'Run again' : 'Start simulation'}</Button>
+    <div className="flex flex-col gap-4 p-4 lg:p-5">
+      <PageHeader icon="target" title="Симуляция посадки"
+        subtitle="Траектория считается ядром; эта страница только отправляет сценарий и воспроизводит возвращённый временной ряд. Ничего не вычисляется в браузере."
+        actions={<>
+          {status !== 'idle' && <Badge tone={status === 'failed' ? 'bad' : status === 'completed' ? 'ok' : 'info'}>{label(SIM_STATUS_RU, status)}</Badge>}
+          <Button variant="primary" size="lg" icon="play" onClick={runSimulation} disabled={busy} data-testid="start">{busy ? (status === 'queued' ? 'В очереди…' : 'Расчёт на ядре…') : results ? 'Пересчитать' : 'Запустить симуляцию'}</Button>
+        </>} />
+
+      {vehicles.error && <ErrorBanner error={vehicles.error} title="Не удалось получить список аппаратов" onRetry={vehicles.reload} />}
+      {error != null && <ErrorBanner error={error} title="Ошибка симуляции" />}
+
+      <div className="grid gap-4 xl:h-[calc(100vh-12.5rem)] xl:min-h-[700px] xl:grid-cols-[390px_minmax(0,1fr)_340px]">
+        {/* ---------- left: scenario ---------- */}
+        <Panel title="Сценарий" icon="edit" padded={false} className="min-h-0 xl:overflow-y-auto" actions={modified ? <Badge tone="warn">аппарат изменён</Badge> : undefined}>
+          <ScenarioPanel scenario={inputs.scenario} onScenario={inputs.setScenario} errors={scErr} vehicles={vehicles.data ?? []} vehicleId={inputs.spacecraftId} onVehicle={(id) => { inputs.setSpacecraftId(id); setSuggestion(null) }}
+            overrides={overrides} onOverrides={setOverrides} overrideErrors={overrideErrors} targetLat={latS} targetLon={lonS} onTarget={onTarget} targetErrors={targetErrors}
+            showErrors={showErr} disabled={busy} suggestion={suggestion} onSuggest={suggest} suggesting={suggesting} />
+        </Panel>
+
+        {/* ---------- centre: 3-D scene + timeline ---------- */}
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-panel/95 panel-glow">
+          <div className="relative min-h-[460px] flex-1">
+            <SceneToolbar layers={layers} onLayers={setLayers} trajMode={trajMode} onTrajMode={setTrajMode} onPreset={setPreset} fov={fov} onFov={setFov} exag={exag} onExag={setExag} follow={follow} onFollow={setFollow} canFollow={!!results} />
+            <SimScene results={results} terrain={terrainWin} target={inputs.target} previewAltitude_m={Number(inputs.scenario.initial_altitude_m) || 0} exaggeration={exag}
+              layers={layers} trajMode={trajMode} cam={cam} fov={fov} follow={follow && !!results} className="absolute inset-0" />
+            {busy && <div className="absolute inset-0 flex items-center justify-center bg-space-950/55 backdrop-blur-[1px]"><div className="rounded-lg border border-line-2 bg-panel px-5 py-4"><Spinner label={status === 'queued' ? 'Задача в очереди…' : 'Ядро интегрирует траекторию…'} /></div></div>}
+            {!terrainWin && !busy && (
+              <div className="pointer-events-none absolute left-3 top-3 max-w-sm rounded-md border border-warn/40 bg-space-950/85 p-3 text-[12px] text-warn">
+                {previewErr ?? (!dataset ? 'Под целью нет реального DEM, поэтому рельеф не показан (синтетика не подставляется). Источники данных — в одноимённом разделе.' : inputs.scenario.terrain_enabled ? 'Загрузка рельефа…' : 'Связь с DEM выключена в настройках расчёта.')}
+              </div>
+            )}
+            {terrainWin && (
+              <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-line bg-space-950/80 px-3 py-2 text-[11.5px] text-muted" data-testid="scene-source">
+                Реальный рельеф: <span className="text-ink/90">{terrainWin.provenance.product}</span> · ячейка ≈ {fmt(terrainWin.geometry.cell_size_m.dx, 0)} м{syntheticRun ? <span className="ml-2 text-warn">СИНТЕТИКА — не реальные данные</span> : null}
+                <div className="text-dim">Аппарат показан увеличенным и вертикальным (ориентация не моделируется).</div>
+              </div>
+            )}
+          </div>
+          <Timeline duration={duration} events={results?.summary.events ?? []} disabled={!results || busy} />
+        </div>
+
+        {/* ---------- right: telemetry ---------- */}
+        <div className="flex min-h-0 flex-col gap-4 xl:overflow-y-auto">
+          <Panel title="Телеметрия" icon="info" actions={results ? <Badge tone="info">из ядра</Badge> : undefined}>
+            {results ? <Telemetry results={results} /> : (
+              <Empty title="Данные появятся после запуска" icon="play">Высота, скорость, ускорение, топливо и тяга берутся из временного ряда, который вернёт ядро.</Empty>
+            )}
+          </Panel>
+          {!results && (
+            <Panel title="Предпросмотр цели" icon="target">
+              <div className="grid grid-cols-2 gap-3 text-[12px]" data-testid="preview-info">
+                <Stat label="Цель" value={<span className="text-[12px]">{formatLat(inputs.target.lat)}<br />{formatLon(inputs.target.lon)}</span>} />
+                <Stat label="Высота рельефа" value={centerZ !== null ? fmt(centerZ, 0) : '—'} unit={centerZ !== null ? 'м' : undefined} />
+                <Stat label="Набор данных" value={dataset ? dataset.product : '—'} />
+                <Stat label="Ячейка DEM" value={dataset?.resolution_m_per_px ? fmt(dataset.resolution_m_per_px, 0) : '—'} unit={dataset?.resolution_m_per_px ? 'м' : undefined} />
+              </div>
+              {syntheticRun && <div className="mt-3"><SyntheticNotice compact /></div>}
+            </Panel>
+          )}
+          {results && (
+            <Panel title="Итог" icon="check" actions={<Badge tone={overallTone}>{label(OVERALL_RU, results.landing_assessment.overall)}</Badge>}>
+              <div data-testid="result-summary">
+                {([
+                  ['Завершение', label(TERMINATION_RU, results.summary.termination_reason), ''],
+                  ['Длительность', fmt(results.summary.duration_s, 1), 'с'],
+                  ['Вертикальная скорость касания', td ? fmt(td.vertical_speed_m_s, 2) : '—', 'м/с'],
+                  ['Горизонтальная скорость касания', td ? fmt(td.horizontal_speed_m_s, 2) : '—', 'м/с'],
+                  ['Промах от цели', td ? fmt(td.miss_distance_m, 1) : '—', 'м'],
+                  ['Израсходовано топлива', fmt(results.summary.fuel_used_kg, 1), 'кг'],
+                  ['Остаток топлива', fmt(results.summary.fuel_remaining_kg, 1), 'кг'],
+                  ['Пик ускорения F/m', fmt(results.summary.peak_proper_acceleration_m_s2, 2), 'м/с²'],
+                ] as [string, string, string][]).map(([l, v, u]) => (
+                  <div key={l} className="flex items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0"><span className="text-[12px] text-muted">{l}</span><span className="num text-[13.5px]">{v}{u && <span className="ml-1 text-[11px] text-muted">{u}</span>}</span></div>
+                ))}
+              </div>
+              {results.summary.events.length > 0 && <div className="mt-3 text-[12px] text-muted">События: {results.summary.events.map((e) => `${label(EVENT_RU, e.event)} @ ${e.t_s.toFixed(1)} с`).join(' · ')}</div>}
+              {results.summary.warnings.map((w, i) => <div key={i} className="mt-2 text-[12px] text-warn">⚠ {tr(w)}</div>)}
+            </Panel>
+          )}
         </div>
       </div>
 
-      {vehicles.error && <ErrorBanner error={vehicles.error} title="Cannot list vehicles" onRetry={vehicles.reload} />}
-      {error != null && <ErrorBanner error={error} title="Simulation error" />}
+      {terrainNote && <div className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-[13px] text-warn" data-testid="terrain-note">{terrainNote}</div>}
+      {results && syntheticRun && <SyntheticNotice />}
 
-      <Panel title="Scenario summary">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-          <Stat label="Target" value={<span className="num text-xs">{formatLat(inputs.target.lat)}<br />{formatLon(inputs.target.lon)}</span>} />
-          <Stat label="Vehicle" value={vehicle ? vehicle.name : '—'} />
-          <Stat label="Start altitude" value={inputs.scenario.initial_altitude_m} unit="m" />
-          <Stat label="Start speed" value={inputs.scenario.initial_speed_m_s} unit="m/s" />
-          <Stat label="Burn" value={humanize(inputs.scenario.burnMode)} />
-          <Stat label="Integrator" value={inputs.scenario.integrator} />
-          <Stat label="Terrain" value={inputs.scenario.terrain_enabled ? 'real DEM' : 'off'} />
-          <div className="flex items-end"><Link to="/spacecraft" className="text-xs text-cyan underline">Edit scenario</Link></div>
-        </div>
-        {Object.keys(scErr).length > 0 && <div className="mt-2 text-[11px] text-bad">Scenario has {Object.keys(scErr).length} invalid field(s) — fix them on the Spacecraft page.</div>}
-        {inputs.allowSynthetic && !results && <div className="mt-2"><SyntheticNotice compact /></div>}
-      </Panel>
-
-      {!results && status === 'idle' && !error && (
-        <Empty title="No simulation yet" action={vehicles.data?.length === 0 ? <Link to="/spacecraft" className="text-cyan underline">Create a vehicle →</Link> : undefined}>
-          Pick a vehicle and press Start. The core integrates the descent (point-mass model on a rotating Moon) and returns the time series shown here.</Empty>
+      {!results && status === 'idle' && !error && vehicles.data?.length === 0 && (
+        <Empty title="Нет сохранённых аппаратов" icon="rocket" action={<Link to="/spacecraft" className="text-cyan underline">Создать аппарат →</Link>}>Выберите или создайте аппарат, задайте сценарий слева и запустите симуляцию.</Empty>
       )}
 
       {results && (
         <>
-          {syntheticRun && <SyntheticNotice />}
-          {terrainNote && <div className="rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn" data-testid="terrain-note">{terrainNote}</div>}
-          <div className="grid gap-3 xl:grid-cols-[1fr_340px]">
-            <div className="min-w-0 space-y-2">
-              <SimScene results={results} terrain={terrain} t={pb.t} exaggeration={exag} className="h-[520px]" />
-              <Panel padded>
-                <div className="flex flex-wrap items-center gap-2" data-testid="controls">
-                  <Button variant="primary" onClick={pb.start} data-testid="btn-start">Start</Button>
-                  <Button onClick={pb.pause} disabled={pb.state !== 'playing'} data-testid="btn-pause">Pause</Button>
-                  <Button onClick={pb.resume} disabled={pb.state === 'playing' || pb.state === 'idle'} data-testid="btn-resume">Resume</Button>
-                  <Button onClick={pb.reset} data-testid="btn-reset">Reset</Button>
-                  <Button onClick={pb.replay} disabled={pb.state !== 'finished'} data-testid="btn-replay">Replay</Button>
-                  <div className="w-24"><SelectField label="Speed" value={String(pb.speed)} onChange={(v) => pb.setSpeed(Number(v))} options={SPEEDS.map((s) => ({ value: String(s), label: `×${s}` }))} /></div>
-                  <label className="text-[11px] text-muted">Vertical ×{exag}<input type="range" min={1} max={10} step={0.5} value={exag} onChange={(e) => setExag(Number(e.target.value))} className="ml-2 w-24 align-middle accent-cyan" /></label>
-                  <Badge tone={pb.state === 'playing' ? 'info' : 'neutral'}>{pb.state}</Badge>
-                </div>
-                <input type="range" aria-label="Time" min={0} max={duration} step={duration / 1000 || 0.1} value={pb.t} onChange={(e) => pb.seek(Number(e.target.value))} className="mt-3 w-full accent-cyan" />
-                <div className="num flex justify-between text-[10px] text-dim"><span>0</span><span>t = {fmtDuration(pb.t)}</span><span>{fmtDuration(duration)}</span></div>
-                <p className="mt-1 text-[10px] text-dim">Lander is drawn enlarged and upright (attitude is not simulated). Start/Reset/Replay control the replay of the core's result; “Run again” recomputes on the core.</p>
-              </Panel>
-            </div>
-            <Panel title="Live telemetry"><Telemetry results={results} t={pb.t} /></Panel>
-          </div>
-
-          <Panel title="Result summary" actions={<Badge tone={overallTone}>{humanize(results.landing_assessment.overall)}</Badge>}>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8" data-testid="result-summary">
-              <Stat label="Termination" value={humanize(results.summary.termination_reason)} />
-              <Stat label="Duration" value={fmt(results.summary.duration_s, 1)} unit="s" />
-              <Stat label="Touchdown vertical" value={td ? fmt(td.vertical_speed_m_s, 2) : '—'} unit="m/s" />
-              <Stat label="Touchdown horizontal" value={td ? fmt(td.horizontal_speed_m_s, 2) : '—'} unit="m/s" />
-              <Stat label="Miss distance" value={td ? fmt(td.miss_distance_m, 1) : '—'} unit="m" />
-              <Stat label="Fuel used" value={fmt(results.summary.fuel_used_kg, 1)} unit="kg" />
-              <Stat label="Fuel remaining" value={fmt(results.summary.fuel_remaining_kg, 1)} unit="kg" />
-              <Stat label="Peak thrust accel." value={fmt(results.summary.peak_proper_acceleration_m_s2, 2)} unit="m/s²" />
-            </div>
-            {results.summary.events.length > 0 && <div className="mt-2 text-[11px] text-muted">Events: {results.summary.events.map((e) => `${humanize(e.event)} @ ${e.t_s.toFixed(1)} s`).join(' · ')}</div>}
-            {results.summary.warnings.map((w, i) => <div key={i} className="mt-1 text-[11px] text-warn">⚠ {w}</div>)}
-            <details className="mt-2 text-[11px] text-muted"><summary className="cursor-pointer text-dim">Model assumptions & limitations</summary>
-              <ul className="mt-1 list-inside list-disc">{[...results.summary.assumptions, ...results.summary.limitations].map((a, i) => <li key={i}>{a}</li>)}</ul></details>
-          </Panel>
-
-          <Charts results={results} t={pb.t} />
+          <details className="rounded-lg border border-line bg-panel/80 p-4 text-[13px] text-muted">
+            <summary className="font-medium text-ink/90">Допущения и ограничения модели</summary>
+            <ul className="mt-2 list-inside list-disc">{[...results.summary.assumptions, ...results.summary.limitations].map((a, i) => <li key={i}>{tr(a)}</li>)}</ul>
+          </details>
+          <Charts results={results} />
           <AssessmentPanel a={results.landing_assessment} />
-
-          <Panel title="Save & export">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-56 flex-1"><label htmlFor="mname" className="mb-1 block text-[11px] text-muted">Mission name</label>
-                <input id="mname" data-testid="mission-name" value={missionName} onChange={(e) => setMissionName(e.target.value)} maxLength={160} className="w-full rounded border border-line-2 bg-space-900 px-2 py-1.5 text-xs outline-none focus:border-cyan" /></div>
-              <Button variant="primary" onClick={saveMission} disabled={!missionName.trim() || !simulation} data-testid="save-mission">Save as mission</Button>
-              <Button onClick={() => download(`simulation_${results.simulation_id}.csv`, timeSeriesToCsv(results.time_series), 'text/csv')}>Time series CSV</Button>
-              <Button onClick={() => download(`simulation_${results.simulation_id}.json`, JSON.stringify(results, null, 2), 'application/json')}>Full result JSON</Button>
-              <Link to="/reports" className="text-xs text-cyan underline">Mission Reports →</Link>
+          <Panel title="Сохранение и экспорт" icon="download">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1"><TextField id="mname" testId="mission-name" label="Название миссии" value={missionName} onChange={setMissionName} maxLength={160} /></div>
+              <Button variant="primary" onClick={saveMission} disabled={!missionName.trim() || !simulation} data-testid="save-mission" icon="check">Сохранить как миссию</Button>
+              <Button icon="download" onClick={() => download(`simulation_${results.simulation_id}.csv`, timeSeriesToCsv(results.time_series), 'text/csv')}>Временной ряд CSV</Button>
+              <Button icon="download" onClick={() => download(`simulation_${results.simulation_id}.json`, JSON.stringify(results, null, 2), 'application/json')}>Результат JSON</Button>
+              <Link to="/reports" className="text-[13px] text-cyan underline decoration-cyan/40 underline-offset-2">Отчёты миссий →</Link>
             </div>
-            {saveMsg && <div className="mt-2 text-xs text-muted" data-testid="save-msg">{saveMsg}</div>}
+            {saveMsg && <div className="mt-3 text-[13px] text-muted" data-testid="save-msg">{saveMsg}</div>}
           </Panel>
         </>
       )}

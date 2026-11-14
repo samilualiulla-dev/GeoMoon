@@ -17,7 +17,7 @@ export interface SpacecraftForm {
 
 // ILLUSTRATIVE defaults (the example from the project brief) — NOT validated spacecraft specifications.
 export const DEFAULT_SPACECRAFT_FORM: SpacecraftForm = {
-  name: 'Illustrative lander',
+  name: 'Условный посадочный аппарат',
   dry_mass_kg: '900', fuel_mass_kg: '300',
   length_m: '3', width_m: '3', height_m: '4',
   gear_span_m: '5', pad_diameter_m: '0.3', gear_height_m: '0.5',
@@ -62,10 +62,10 @@ export function spacecraftFieldKeys(f: SpacecraftForm): string[] {
 export function spacecraftCrossErrors(f: SpacecraftForm): Record<string, string> {
   const e: Record<string, string> = {}
   const tmin = n(f.throttle_min), tmax = n(f.throttle_max)
-  if (Number.isFinite(tmin) && Number.isFinite(tmax) && tmin > tmax) e.throttle_min = 'Must be ≤ throttle max'
+  if (Number.isFinite(tmin) && Number.isFinite(tmax) && tmin > tmax) e.throttle_min = 'Должно быть ≤ макс. дросселя'
   const w = n(f.width_m), span = n(f.gear_span_m)
-  if (Number.isFinite(w) && Number.isFinite(span) && span < 0.5 * w) e.gear_span_m = 'Implausibly small compared with hull width (core rule: span ≥ 0.5 × width)'
-  if (!f.name.trim()) e.name = 'Required'
+  if (Number.isFinite(w) && Number.isFinite(span) && span < 0.5 * w) e.gear_span_m = 'Неправдоподобно мала по сравнению с шириной корпуса (правило ядра: база ≥ 0,5 × ширина)'
+  if (!f.name.trim()) e.name = 'Обязательное поле'
   return e
 }
 
@@ -98,14 +98,14 @@ export function parseSchedule(text: string): { rows: [number, number][]; error: 
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
   for (const [i, line] of lines.entries()) {
     const parts = line.split(/[,;\s]+/).filter(Boolean)
-    if (parts.length !== 2) return { rows, error: `Line ${i + 1}: expected "time_s, throttle"` }
+    if (parts.length !== 2) return { rows, error: `Строка ${i + 1}: ожидается «время_с, дроссель»` }
     const t = Number(parts[0]), th = Number(parts[1])
-    if (!Number.isFinite(t) || !Number.isFinite(th)) return { rows, error: `Line ${i + 1}: not numeric` }
-    if (t < 0 || th < 0 || th > 1) return { rows, error: `Line ${i + 1}: need time ≥ 0 and 0 ≤ throttle ≤ 1` }
-    if (rows.length && t <= rows[rows.length - 1][0]) return { rows, error: `Line ${i + 1}: times must be strictly increasing` }
+    if (!Number.isFinite(t) || !Number.isFinite(th)) return { rows, error: `Строка ${i + 1}: не число` }
+    if (t < 0 || th < 0 || th > 1) return { rows, error: `Строка ${i + 1}: нужны время ≥ 0 и 0 ≤ дроссель ≤ 1` }
+    if (rows.length && t <= rows[rows.length - 1][0]) return { rows, error: `Строка ${i + 1}: время должно строго возрастать` }
     rows.push([t, th])
   }
-  if (!rows.length) return { rows, error: 'Schedule is empty' }
+  if (!rows.length) return { rows, error: 'Расписание пустое' }
   return { rows, error: null }
 }
 

@@ -6,7 +6,7 @@ const ds = (id: string, res: number, o: Partial<DatasetInfo> = {}): DatasetInfo 
   id, name: id, provider: 'p', product: id, version: null, citation: null, url: null, resolution_m_per_px: res,
   coverage: { lat_range_deg: [-90, 90], lon_range_deg: [0, 360], includes_pole: true, nominal: null }, crs: null, is_geographic_crs: true,
   shape_rows_cols: [1, 1], elevation_unit: 'm', vertical_reference_radius_m: 1737400, synthetic: false, quantity: 'elevation', unit: 'm', usable_as_dem: true,
-  min_radius_m: 1.5 * res, recommended_radius_m: Math.min(20 * res, 200000), status: 'available', warnings: [], file: id, ...o,
+  min_radius_m: 1.5 * res, recommended_radius_m: Math.min(20 * res, 200000), status: 'available', warnings: [], file: id, installed_at: null, ...o,
 })
 
 describe('dataset advice', () => {

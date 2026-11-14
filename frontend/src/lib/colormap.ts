@@ -27,6 +27,14 @@ export function sample(stops: Stops, t: number): RGB {
 /** sRGB (0..1) -> linear (0..1). Three.js treats vertex colours as linear and re-encodes on output. */
 export function srgbToLinear(c: number): number { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
 
+/** Natural lunar grey (warm regolith tint). t in 0..1 = relative height: lowlands (maria) darker, highlands lighter.
+ *  This is a conventional rendering, NOT measured albedo: the relief shading itself comes from the real DEM. */
+export function naturalRgb(t: number): RGB {
+  const x = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0.5))
+  const k = (0.3 + 0.36 * x) * 255
+  return [k * 1.0, k * 0.97, k * 0.92]
+}
+
 export const NODATA_RGB: RGB = [38, 46, 60]
 
 export interface LayerStyle {
@@ -39,13 +47,13 @@ export interface LayerStyle {
 
 // Display ranges below are VISUALISATION choices (colour stretch), not physical limits.
 export const LAYER_STYLES: LayerStyle[] = [
-  { key: 'elevation', label: 'Elevation', ramp: 'viridis', range: null, unit: 'm', description: 'DEM elevation relative to the dataset reference sphere. Colour stretch = data min/max.' },
-  { key: 'slope', label: 'Slope', ramp: 'inferno', range: [0, 30], unit: '°', description: 'Horn 3×3 slope; baseline = DEM cell size. Colour stretch fixed at 0–30°.' },
-  { key: 'roughness', label: 'Roughness', ramp: 'inferno', range: null, unit: 'm', description: 'RMS residual of elevation about a local plane (window set in analysis parameters).' },
-  { key: 'local_relief', label: 'Local relief', ramp: 'inferno', range: null, unit: 'm', description: 'max − min elevation inside the analysis window.' },
-  { key: 'hazard', label: 'Hazard map', ramp: 'binary', range: [0, 1], unit: '', description: 'Union of detectors: steep slope, elevation discontinuity, rough surface, topographic anomaly. DEM resolution limits what can be detected.' },
-  { key: 'suitability', label: 'Landing suitability', ramp: 'badGood', range: [0, 1], unit: '0–1', description: 'Weighted geometric score (not a safety probability). Colour stretch 0–1.' },
-  { key: 'class', label: 'Site classes', ramp: 'class', range: [0, 2], unit: '', description: 'Footprint-based classification: unsuitable / suitable / insufficient data.' },
+  { key: 'elevation', label: 'Высота', ramp: 'viridis', range: null, unit: 'м', description: 'Высота DEM относительно опорной сферы набора данных. Цветовая шкала растянута между минимумом и максимумом данных.' },
+  { key: 'slope', label: 'Уклон', ramp: 'inferno', range: [0, 30], unit: '°', description: 'Уклон по Хорну (окно 3×3); база — размер ячейки DEM. Цветовая шкала зафиксирована 0–30°.' },
+  { key: 'roughness', label: 'Шероховатость', ramp: 'inferno', range: null, unit: 'м', description: 'СКО высот относительно локальной плоскости (размер окна задаётся в параметрах анализа).' },
+  { key: 'local_relief', label: 'Локальный рельеф', ramp: 'inferno', range: null, unit: 'м', description: 'Перепад max − min высот внутри окна анализа.' },
+  { key: 'hazard', label: 'Карта опасностей', ramp: 'binary', range: [0, 1], unit: '', description: 'Объединение детекторов: крутой склон, разрыв высот, неровная поверхность, топографическая аномалия. Разрешение DEM ограничивает то, что можно обнаружить.' },
+  { key: 'suitability', label: 'Пригодность для посадки', ramp: 'badGood', range: [0, 1], unit: '0–1', description: 'Взвешенная геометрическая оценка (не вероятность безопасности). Шкала 0–1.' },
+  { key: 'class', label: 'Классы площадок', ramp: 'class', range: [0, 2], unit: '', description: 'Классификация по пятну посадки: непригодно / пригодно / недостаточно данных.' },
 ]
 
 export function colorFor(style: LayerStyle, v: number | null, lo: number, hi: number): RGB {

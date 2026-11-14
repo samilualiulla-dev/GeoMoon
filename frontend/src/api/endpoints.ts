@@ -33,9 +33,11 @@ export const api = {
   landingSite: (b: { spacecraft_id: number; latitude_deg: number; longitude_deg: number; radius_m: number; dataset_id?: string | null; allow_synthetic: boolean; params?: AnalysisParams | null }) =>
     request<LandingSiteResponse>('POST', '/landing/evaluate', { body: b, timeoutMs: 120_000 }),
 
-  createSpacecraft: (b: SpacecraftPayload) => request<Spacecraft>('POST', '/spacecraft', { body: b, guard: expectKeys<Spacecraft>('id', 'derived') }),
+  createSpacecraft: (b: SpacecraftPayload & { is_demo?: boolean }) => request<Spacecraft>('POST', '/spacecraft', { body: b, guard: expectKeys<Spacecraft>('id', 'derived') }),
   spacecraftList: () => request<Spacecraft[]>('GET', '/spacecraft', { guard: expectArray<Spacecraft> }),
   spacecraft: (id: number) => request<Spacecraft>('GET', `/spacecraft/${id}`),
+  updateSpacecraft: (id: number, b: SpacecraftPayload & { is_demo?: boolean }) => request<Spacecraft>('PUT', `/spacecraft/${id}`, { body: b }),
+  deleteSpacecraft: (id: number) => request<{ deleted: number }>('DELETE', `/spacecraft/${id}`),
   suggestIgnition: (b: { spacecraft_id: number; initial_altitude_m: number; initial_speed_m_s: number; throttle: number }) =>
     request<IgnitionSuggestion>('POST', '/trajectory/suggest-ignition', { body: b }),
 

@@ -9,8 +9,9 @@ export function TerrainCanvas({ extent_m, children, className = '', minDistance 
     <div className={`relative overflow-hidden rounded border border-line bg-space-950 ${className}`}>
       <Canvas camera={{ position: [d * 0.9, d * 0.7, d * 0.9], fov: 45, near: Math.max(d / 2000, 0.05), far: d * 200 }} dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: true }}>
         <color attach="background" args={['#04070d']} />
-        <ambientLight intensity={0.55} />
-        <directionalLight position={[d, d * 1.2, d * 0.4]} intensity={1.6} />
+        <ambientLight intensity={0.42} />
+        <hemisphereLight args={["#bcd0ee", "#1a1510", 0.4]} />
+        <directionalLight position={[d, d * 0.9, d * 0.35]} intensity={2.1} />
         <OrbitControls makeDefault enableDamping dampingFactor={0.12} minDistance={minDistance ?? d * 0.02} maxDistance={d * 40} maxPolarAngle={Math.PI * 0.499} />
         {children}
       </Canvas>

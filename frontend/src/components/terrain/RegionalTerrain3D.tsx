@@ -1,7 +1,7 @@
 import { Line } from '@react-three/drei'
 import { useMemo, type ReactNode } from 'react'
 import type { AnalysisResult, Geometry, Grid } from '../../api/types'
-import { LAYER_STYLES, colorFor, layerRange } from '../../lib/colormap'
+import { LAYER_STYLES, colorFor, layerRange, naturalRgb } from '../../lib/colormap'
 import { eastNorthOffset } from '../../lib/geo'
 import { LabelSprite } from './LabelSprite'
 import { TerrainCanvas } from './TerrainCanvas'
@@ -17,7 +17,7 @@ function minOf(g: Grid): number {
 }
 
 /** Real-DEM relief mesh (optionally coloured by an analysis layer) with markers and scene children (e.g. trajectory). */
-export function RegionalTerrain3D({ elevation, geometry, analysis, layerKey = 'elevation', exaggeration = 1, markers = [], wireframe = false, className = 'h-[480px]', children }: {
+export function RegionalTerrain3D({ elevation, geometry, analysis, layerKey = 'natural', exaggeration = 1, markers = [], wireframe = false, className = 'h-[480px]', children }: {
   elevation: Grid; geometry: Geometry; analysis?: AnalysisResult | null; layerKey?: string; exaggeration?: number
   markers?: Marker3D[]; wireframe?: boolean; className?: string; children?: (ctx: SceneCtx) => ReactNode
 }) {
@@ -28,6 +28,10 @@ export function RegionalTerrain3D({ elevation, geometry, analysis, layerKey = 'e
   const center = { lat: geometry.center.latitude_deg, lon: geometry.center.longitude_deg }
 
   const colorOf = useMemo(() => {
+    if (layerKey === 'natural') {
+      const [lo, hi] = minMax(grid)
+      return (r: number, c: number) => naturalRgb(((grid.data[r]?.[c] ?? lo) - lo) / (hi - lo))
+    }
     const style = LAYER_STYLES.find((s) => s.key === layerKey) ?? LAYER_STYLES[0]
     const L = layerKey === 'elevation' || !analysis?.layers[layerKey] ? { ...grid, min: minMax(grid)[0], max: minMax(grid)[1] } : analysis.layers[layerKey]
     const [lo, hi] = layerRange(style, L.min, L.max)

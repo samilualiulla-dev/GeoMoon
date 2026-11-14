@@ -80,6 +80,7 @@ class SpacecraftConfiguration(Base):
     engine_parameters: Mapped[dict] = mapped_column(JSON)
     landing_constraints: Mapped[dict] = mapped_column(JSON)
     landing_gear: Mapped[dict] = mapped_column(JSON)
+    is_demo: Mapped[bool] = mapped_column(default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

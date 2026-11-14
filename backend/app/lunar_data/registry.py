@@ -70,8 +70,17 @@ class DatasetInfo:
             "synthetic": self.synthetic, "quantity": self.quantity, "unit": self.meta.get("unit", "m"),
             "usable_as_dem": self.quantity == "elevation",
             "min_radius_m": self.min_radius_m(), "recommended_radius_m": self.recommended_radius_m(), "status": self.status, "warnings": self.warnings,
-            "file": self.path.name,
+            "file": self.path.name, "installed_at": _mtime_iso(self.path),
         }
+
+
+def _mtime_iso(p: Path) -> str | None:
+    """File modification time (UTC ISO). For imported products this is the import time."""
+    from datetime import datetime, timezone
+    try:
+        return datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat()
+    except OSError:
+        return None
 
 
 def _slug(s: str) -> str:

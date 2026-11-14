@@ -23,13 +23,18 @@ def spacecraft_from_row(r: M.SpacecraftConfiguration) -> SpacecraftConfig:
                             landing_gear=r.landing_gear, engine=r.engine_parameters, constraints=r.landing_constraints)
 
 
-def save_spacecraft(db, cfg: SpacecraftConfig, user_id: int | None = None) -> M.SpacecraftConfiguration:
+def save_spacecraft(db, cfg: SpacecraftConfig, user_id: int | None = None, is_demo: bool = False) -> M.SpacecraftConfiguration:
     row = M.SpacecraftConfiguration(
         user_id=user_id, name=cfg.name, dry_mass=cfg.dry_mass_kg, fuel_mass=cfg.fuel_mass_kg,
         dimensions=cfg.dimensions.model_dump(), engine_parameters=cfg.engine.model_dump(),
-        landing_constraints=cfg.constraints.model_dump(), landing_gear=cfg.landing_gear.model_dump())
+        landing_constraints=cfg.constraints.model_dump(), landing_gear=cfg.landing_gear.model_dump(), is_demo=is_demo)
     db.add(row); db.commit()
     return row
+
+
+def spacecraft_usage(db, spacecraft_id: int) -> dict:
+    return {"simulations": db.query(M.Simulation).filter_by(spacecraft_id=spacecraft_id).count(),
+            "missions": db.query(M.Mission).filter_by(spacecraft_id=spacecraft_id).count()}
 
 
 def create_simulation(db, *, spacecraft_id: int, region_id: int | None, ic: InitialConditions, settings: SimSettings,

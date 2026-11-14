@@ -24,7 +24,18 @@ def make_engine(url: str):
         def _fk(dbapi_con, _):  # enforce foreign keys in SQLite
             dbapi_con.execute("PRAGMA foreign_keys=ON")
     Base.metadata.create_all(engine)
+    _migrate(engine)
     return engine
+
+
+def _migrate(engine) -> None:
+    """Tiny forward-only migrations for existing local SQLite databases (create_all never alters existing tables)."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    cols = {c["name"] for c in insp.get_columns("spacecraft_configurations")}
+    if "is_demo" not in cols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE spacecraft_configurations ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT 0"))
 
 
 def make_session_factory(engine) -> sessionmaker[Session]:

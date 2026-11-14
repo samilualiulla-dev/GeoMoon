@@ -9,13 +9,13 @@ export function fmt(v: number | null | undefined, digits = 2, unit = ''): string
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ru-RU')
 }
 
 export function fmtDuration(s: number): string {
   if (!Number.isFinite(s)) return '—'
   const m = Math.floor(s / 60)
-  return m > 0 ? `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}` : `${s.toFixed(1)} s`
+  return m > 0 ? `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}` : `${s.toFixed(1)} с`
 }
 
 export function pct(v: number | null | undefined, digits = 1): string {
@@ -23,3 +23,5 @@ export function pct(v: number | null | undefined, digits = 1): string {
 }
 
 export function humanize(s: string): string { return s.replace(/_/g, ' ') }
+
+export function fmtInt(v: number, digits = 0): string { return Number.isFinite(v) ? v.toLocaleString('ru-RU', { maximumFractionDigits: digits }) : '—' }

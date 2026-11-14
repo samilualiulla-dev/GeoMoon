@@ -387,3 +387,64 @@ def test_simulation_enlarges_too_small_terrain_window_instead_of_failing(client_
     assert any("larger than the vehicle footprint" in i for i in sf["issues"])
     assert la["overall"] != "within_all_assessed_limits" and la["uncertainty"]["level"] in ("high", "not_applicable_synthetic_terrain")
     assert any("coarser than the landing footprint" in f for f in la["uncertainty"]["factors"])
+
+
+# ---- spacecraft edit / delete / demo flag / migration / thrust direction ---------------------------------
+def test_spacecraft_update_delete_and_demo_flag(client):
+    a = client.post("/api/spacecraft", json={**SC, "name": "A", "is_demo": True}).json()
+    assert a["is_demo"] is True
+    upd = client.put(f"/api/spacecraft/{a['id']}", json={**SC, "name": "A2", "fuel_mass_kg": 250, "is_demo": False})
+    assert upd.status_code == 200 and upd.json()["name"] == "A2" and upd.json()["fuel_mass_kg"] == 250 and upd.json()["is_demo"] is False
+    assert upd.json()["derived"]["total_mass_kg"] == 1150
+    assert client.put(f"/api/spacecraft/{a['id']}", json={**SC, "dry_mass_kg": -1}).status_code == 422
+    assert client.put("/api/spacecraft/999", json=SC).status_code == 404
+    assert client.delete(f"/api/spacecraft/{a['id']}").json() == {"deleted": a["id"]}
+    assert client.get(f"/api/spacecraft/{a['id']}").status_code == 404
+    assert client.delete("/api/spacecraft/999").status_code == 404
+
+
+def test_used_spacecraft_cannot_be_edited_or_deleted(client):
+    sid = client.post("/api/spacecraft", json=SC).json()["id"]
+    sim = client.post("/api/simulation/create", json={"spacecraft_id": sid, "initial_conditions": ic(), "terrain": {"enabled": False}}).json()["id"]
+    r = client.put(f"/api/spacecraft/{sid}", json={**SC, "name": "changed"})
+    assert r.status_code == 409 and r.json()["error"]["details"]["simulations"] == 1
+    r = client.delete(f"/api/spacecraft/{sid}")
+    assert r.status_code == 409 and "cannot be deleted" in r.json()["error"]["message"]
+    assert client.get(f"/api/spacecraft/{sid}").json()["name"] == "Test lander"      # untouched
+    client.post("/api/missions", json={"name": "m", "spacecraft_id": sid})
+    assert sim
+
+
+def test_time_series_has_thrust_direction(client):
+    sid = client.post("/api/spacecraft", json=SC).json()["id"]
+    body = {"spacecraft_id": sid, "initial_conditions": ic(initial_altitude_m=500, initial_speed_m_s=30,
+            burn={"mode": "altitude", "ignition_altitude_m": 200, "cutoff_speed_m_s": 2}), "terrain": {"enabled": False}}
+    simid = client.post("/api/simulation/create", json=body).json()["id"]
+    client.post(f"/api/simulation/{simid}/run", params={"wait": True})
+    ts = client.get(f"/api/simulation/{simid}/results").json()["time_series"]
+    n = len(ts["time_s"])
+    assert all(len(ts[k]) == n for k in ("thrust_dir_x", "thrust_dir_y", "thrust_dir_z"))
+    for i in range(n):
+        mag = (ts["thrust_dir_x"][i] ** 2 + ts["thrust_dir_y"][i] ** 2 + ts["thrust_dir_z"][i] ** 2) ** 0.5
+        assert (mag == pytest.approx(1.0, abs=1e-9)) if ts["thrust_n"][i] > 0 else (mag == 0.0)
+    assert any(t > 0 for t in ts["thrust_n"])
+
+
+def test_dataset_install_date_exposed(client):
+    d = client.get("/api/data/sources").json()["installed"][0]
+    assert d["installed_at"] and d["installed_at"].startswith("20")
+
+
+def test_old_database_without_is_demo_is_migrated(tmp_path):
+    import sqlite3
+    from app.db.session import make_engine
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE spacecraft_configurations (id INTEGER PRIMARY KEY, user_id INTEGER, name VARCHAR(120), dry_mass FLOAT, fuel_mass FLOAT, "
+                "dimensions JSON, engine_parameters JSON, landing_constraints JSON, landing_gear JSON, created_at DATETIME)")
+    con.execute("INSERT INTO spacecraft_configurations (name, dry_mass, fuel_mass, dimensions, engine_parameters, landing_constraints, landing_gear) VALUES ('old', 1, 1, '{}', '{}', '{}', '{}')")
+    con.commit(); con.close()
+    eng = make_engine(f"sqlite:///{db}")
+    with eng.connect() as c:
+        from sqlalchemy import text
+        assert c.execute(text("SELECT is_demo FROM spacecraft_configurations")).scalar() == 0

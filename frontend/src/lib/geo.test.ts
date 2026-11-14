@@ -61,3 +61,21 @@ describe('geo', () => {
     expect(inCoverageBox(0, 0, { lat_range_deg: null, lon_range_deg: null })).toBe(false)
   })
 })
+
+import { bfToEnu, enuBasisBF } from './geo'
+describe('body-fixed -> ENU', () => {
+  it('maps the local up/east/north axes to unit ENU vectors', () => {
+    for (const [la, lo] of [[0, 0], [45, 100], [-89.9, 30], [20.19, 30.77]]) {
+      const b = enuBasisBF(la, lo)
+      const e = bfToEnu(b.e, b), n = bfToEnu(b.n, b), u = bfToEnu(b.u, b)
+      expect([e.east, e.north, e.up].map((x) => Math.round(x * 1e9) / 1e9 || 0)).toEqual([1, 0, 0])
+      expect([n.east, n.north, n.up].map((x) => Math.round(x * 1e9) / 1e9 || 0)).toEqual([0, 1, 0])
+      expect([u.east, u.north, u.up].map((x) => Math.round(x * 1e9) / 1e9 || 0)).toEqual([0, 0, 1])
+    }
+  })
+  it('a vector pointing at the surface normal is "up"', () => {
+    const [x, y, z] = latLonToUnit(30, 40)
+    const r = bfToEnu([x * 5, y * 5, z * 5], enuBasisBF(30, 40))
+    expect(r.up).toBeCloseTo(5, 9); expect(Math.hypot(r.east, r.north)).toBeCloseTo(0, 9)
+  })
+})

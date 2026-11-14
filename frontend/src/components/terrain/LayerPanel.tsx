@@ -11,12 +11,12 @@ export function Legend({ style, analysis }: { style: LayerStyle; analysis: Analy
   else if (style.ramp === 'binary') bar = 'linear-gradient(90deg,#14532d 0 50%,#ef4444 50%)'
   else bar = `linear-gradient(90deg, ${Array.from({ length: 9 }, (_, i) => rgbCss(sample(RAMPS[style.ramp as keyof typeof RAMPS], i / 8))).join(',')})`
   return (
-    <div className="text-[10px]">
-      <div className="h-2 rounded-sm" style={{ background: bar }} />
+    <div className="text-[11px]">
+      <div className="h-2.5 rounded-sm" style={{ background: bar }} />
       {style.ramp === 'class' ? (
-        <div className="mt-0.5 flex justify-between text-dim"><span>unsuitable</span><span>suitable</span><span>no data</span></div>
+        <div className="mt-0.5 flex justify-between text-dim"><span>непригодно</span><span>пригодно</span><span>нет данных</span></div>
       ) : style.ramp === 'binary' ? (
-        <div className="mt-0.5 flex justify-between text-dim"><span>clear</span><span>hazard</span></div>
+        <div className="mt-0.5 flex justify-between text-dim"><span>чисто</span><span>опасность</span></div>
       ) : (
         <div className="num mt-0.5 flex justify-between text-dim"><span>{fmt(lo, 2)}</span><span>{style.unit}</span><span>{fmt(hi, 2)}</span></div>
       )}
@@ -28,23 +28,23 @@ export function Legend({ style, analysis }: { style: LayerStyle; analysis: Analy
 export function LayerPanel({ analysis, state, onChange }: { analysis: AnalysisResult; state: Record<string, LayerState>; onChange: (key: string, s: LayerState) => void }) {
   const p = analysis.provenance
   return (
-    <div className="space-y-2" data-testid="layer-panel">
+    <div className="space-y-2.5" data-testid="layer-panel">
       {LAYER_STYLES.filter((s) => analysis.layers[s.key]).map((s) => {
         const st = state[s.key] ?? { visible: false, opacity: 0.8 }
         return (
-          <div key={s.key} className="rounded border border-line p-2">
-            <label className="flex cursor-pointer items-center justify-between gap-2 text-xs">
-              <span className="flex items-center gap-2">
-                <input type="checkbox" data-testid={`layer-${s.key}`} checked={st.visible} onChange={(e) => onChange(s.key, { ...st, visible: e.target.checked })} className="accent-cyan" />
+          <div key={s.key} className={`rounded-lg border p-3 transition-colors ${st.visible ? 'border-cyan/30 bg-cyan/[0.03]' : 'border-line'}`}>
+            <label className="flex min-h-9 cursor-pointer items-center justify-between gap-2 text-[13px]">
+              <span className="flex items-center gap-2.5">
+                <input type="checkbox" data-testid={`layer-${s.key}`} checked={st.visible} onChange={(e) => onChange(s.key, { ...st, visible: e.target.checked })} className="h-4 w-4 accent-cyan" />
                 <span className="text-ink">{s.label}</span>
               </span>
-              <input type="range" aria-label={`${s.label} opacity`} min={0.1} max={1} step={0.05} value={st.opacity} onChange={(e) => onChange(s.key, { ...st, opacity: Number(e.target.value) })} className="w-16 accent-cyan" />
+              <input type="range" aria-label={`Прозрачность: ${s.label}`} min={0.1} max={1} step={0.05} value={st.opacity} onChange={(e) => onChange(s.key, { ...st, opacity: Number(e.target.value) })} className="w-20 accent-cyan" />
             </label>
             {st.visible && (
-              <div className="mt-1.5 space-y-1">
+              <div className="mt-2 space-y-1.5">
                 <Legend style={s} analysis={analysis} />
-                <p className="text-[10px] leading-snug text-dim">{s.description}</p>
-                <p className="text-[10px] text-dim">Source: {p.provider} · {p.product}{p.version ? ` v${p.version}` : ''}{p.synthetic ? ' (SYNTHETIC)' : ''}</p>
+                <p className="text-[11px] leading-snug text-dim">{s.description}</p>
+                <p className="text-[11px] text-dim">Источник: {p.provider} · {p.product}{p.version ? ` v${p.version}` : ''}{p.synthetic ? ' (СИНТЕТИКА)' : ''}</p>
               </div>
             )}
           </div>

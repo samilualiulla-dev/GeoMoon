@@ -2,7 +2,7 @@
 // Radius at each vertex = 1 + exaggeration * elevation / R_ref  (unit sphere = reference sphere). No smoothing of gaps:
 // cells without data keep radius 1 and the no-data colour.
 import type { GlobeData } from '../api/types'
-import { NODATA_RGB, RAMPS, sample, srgbToLinear } from './colormap'
+import { NODATA_RGB, RAMPS, naturalRgb, sample, srgbToLinear } from './colormap'
 import { latLonToUnit } from './geo'
 
 export interface GlobeGeometryData {
@@ -18,7 +18,9 @@ export function globeElevationRange(g: GlobeData): [number, number] {
   return Number.isFinite(lo) ? [lo, hi === lo ? lo + 1 : hi] : [0, 1]
 }
 
-export function buildGlobeGeometry(g: GlobeData, exaggeration: number): GlobeGeometryData {
+export type GlobeColorMode = 'natural' | 'elevation'
+
+export function buildGlobeGeometry(g: GlobeData, exaggeration: number, mode: GlobeColorMode = 'natural'): GlobeGeometryData {
   const { rows, cols, data } = g.elevation_m
   const R = g.reference_radius_m
   const [lo, hi] = globeElevationRange(g)
@@ -44,7 +46,8 @@ export function buildGlobeGeometry(g: GlobeData, exaggeration: number): GlobeGeo
       const o = (i * nc + j) * 3
       // backend (x, y, z) -> three (x, z, -y)
       positions[o] = x * rad; positions[o + 1] = zz * rad; positions[o + 2] = -y * rad
-      const c = z === null ? NODATA_RGB : sample(RAMPS.viridis, (z - lo) / (hi - lo))
+      const tt = z === null ? 0 : (z - lo) / (hi - lo)
+      const c = z === null ? NODATA_RGB : mode === 'natural' ? naturalRgb(tt) : sample(RAMPS.viridis, tt)
       colors[o] = srgbToLinear(c[0] / 255); colors[o + 1] = srgbToLinear(c[1] / 255); colors[o + 2] = srgbToLinear(c[2] / 255)
     }
   }

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { AnalysisParams, DatasetInfo } from '../../api/types'
+import type { RadiusAdvice } from '../../lib/datasets'
 import { parseNum, TERRAIN_FIELDS, validateAll } from '../../lib/validation'
 import { RadiusHint } from '../ui/RadiusHint'
-import type { RadiusAdvice } from '../../lib/datasets'
 import { Button, NumberField, Panel, SelectField, SyntheticNotice, Toggle } from '../ui/ui'
 
 export interface TerrainFormState {
@@ -35,12 +35,11 @@ export function paramsFromForm(f: TerrainFormState): AnalysisParams {
 
 export function terrainFormErrors(f: TerrainFormState): Record<string, string> {
   const e = validateAll(f as unknown as Record<string, string>, TERRAIN_FIELDS)
-  const w = Object.values(f.weights)
-  if (w.every((x) => x === 0)) e.weights = 'At least one weight must be > 0'
+  if (Object.values(f.weights).every((x) => x === 0)) e.weights = 'Хотя бы один вес должен быть больше нуля'
   return e
 }
 
-const WEIGHT_LABELS: Record<keyof AnalysisParams['weights'], string> = { slope: 'Slope', roughness: 'Roughness', relief: 'Local relief', hazard: 'Hazard proximity' }
+const WEIGHT_LABELS: Record<keyof AnalysisParams['weights'], string> = { slope: 'Уклон', roughness: 'Шероховатость', relief: 'Локальный рельеф', hazard: 'Близость опасностей' }
 
 export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, allowSynthetic, onAllowSynthetic, onRun, running, vehicleFootprint, vehicleTilt, onUseVehicle, autoRerun, onAutoRerun, hasResult, radiusAdvice }: {
   value: TerrainFormState; onChange: (f: TerrainFormState) => void
@@ -59,50 +58,50 @@ export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, 
   const wsum = Object.values(value.weights).reduce((a, b) => a + b, 0)
   const run = () => { setTouched(true); if (Object.keys(errors).length === 0) onRun() }
   return (
-    <div className="space-y-3">
-      <Panel title="Region">
+    <div className="space-y-4">
+      <Panel title="Регион" icon="globe">
         <div className="grid grid-cols-2 gap-3">
           <F k="latitude_deg" /><F k="longitude_deg" />
           <div className="col-span-2"><F k="radius_m" /><RadiusHint advice={radiusAdvice} onApply={(r) => set('radius_m', String(r))} /></div>
           <div className="col-span-2">
-            <SelectField label="DEM dataset" id="dataset" value={datasetId ?? ''} onChange={(v) => onDataset(v === '' ? null : v)}
-              options={[{ value: '', label: 'Auto (best real dataset covering the point)' }, ...datasets.filter((d) => d.usable_as_dem).map((d) => ({ value: d.id, label: `${d.name}${d.synthetic ? ' — SYNTHETIC' : ''}` }))]} />
+            <SelectField label="Набор данных DEM" id="dataset" value={datasetId ?? ''} onChange={(v) => onDataset(v === '' ? null : v)}
+              options={[{ value: '', label: 'Авто (лучший реальный набор, покрывающий точку)' }, ...datasets.filter((d) => d.usable_as_dem).map((d) => ({ value: d.id, label: `${d.name}${d.synthetic ? ' — СИНТЕТИКА' : ''}` }))]} />
           </div>
-          <div className="col-span-2 space-y-1.5">
-            <Toggle checked={allowSynthetic} onChange={onAllowSynthetic} label="Allow SYNTHETIC test terrain" hint="Required to use datasets flagged synthetic" />
+          <div className="col-span-2 space-y-2">
+            <Toggle checked={allowSynthetic} onChange={onAllowSynthetic} label="Разрешить синтетику (тест)" hint="Нужно для наборов, помеченных как синтетические" />
             {allowSynthetic && <SyntheticNotice compact />}
           </div>
         </div>
       </Panel>
-      <Panel title="Criteria">
+      <Panel title="Критерии" icon="alert">
         <div className="grid grid-cols-2 gap-3">
           <F k="slope_limit_deg" /><F k="footprint_radius_m" />
-          <div className="col-span-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
-            <Button onClick={onUseVehicle} disabled={vehicleFootprint === null} data-testid="use-vehicle">Use vehicle footprint{vehicleFootprint !== null ? ` (${vehicleFootprint.toFixed(2)} m` + (vehicleTilt !== null ? `, ${vehicleTilt.toFixed(1)}° tilt)` : ')') : ''}</Button>
-            {vehicleFootprint === null && <span className="text-dim">Save a vehicle on the Spacecraft page first.</span>}
+          <div className="col-span-2 flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={onUseVehicle} disabled={vehicleFootprint === null} data-testid="use-vehicle">Взять из аппарата{vehicleFootprint !== null ? ` (r ${vehicleFootprint.toFixed(2)} м${vehicleTilt !== null ? `, ${vehicleTilt.toFixed(1)}°` : ''})` : ''}</Button>
+            {vehicleFootprint === null && <span className="text-[12px] text-dim">Выберите аппарат в разделе «Аппараты».</span>}
           </div>
           <F k="window_m" /><F k="max_candidates" />
           <F k="roughness_limit_m" /><F k="relief_limit_m" /><F k="tpi_limit_m" /><F k="hazard_safe_distance_m" />
           <F k="suitable_threshold" />
-          <SelectField label="Roughness method" value={value.roughness_method} onChange={(m) => onChange({ ...value, roughness_method: m })}
-            options={[{ value: 'detrended', label: 'Plane-detrended RMS' }, { value: 'std', label: 'Plain std-dev' }]} />
+          <SelectField label="Метод шероховатости" value={value.roughness_method} onChange={(m) => onChange({ ...value, roughness_method: m })}
+            options={[{ value: 'detrended', label: 'СКО от плоскости' }, { value: 'std', label: 'Простое СКО' }]} />
         </div>
       </Panel>
-      <Panel title="Suitability weights" actions={<span className="num text-[10px] text-dim">normalised Σ = {wsum.toFixed(2)}</span>}>
-        <div className="space-y-2">
+      <Panel title="Веса пригодности" icon="layers" actions={<span className="num text-[11px] text-dim">Σ = {wsum.toFixed(2)}</span>}>
+        <div className="space-y-3">
           {(Object.keys(WEIGHT_LABELS) as (keyof AnalysisParams['weights'])[]).map((k) => (
-            <label key={k} className="block text-[11px]">
+            <label key={k} className="block text-[12.5px]">
               <span className="flex justify-between text-muted"><span>{WEIGHT_LABELS[k]}</span><span className="num text-ink">{wsum > 0 ? ((value.weights[k] / wsum) * 100).toFixed(0) : 0} %</span></span>
-              <input type="range" data-testid={`w-${k}`} min={0} max={1} step={0.05} value={value.weights[k]} onChange={(e) => onChange({ ...value, weights: { ...value.weights, [k]: Number(e.target.value) } })} className="w-full accent-cyan" />
+              <input type="range" data-testid={`w-${k}`} min={0} max={1} step={0.05} value={value.weights[k]} onChange={(e) => onChange({ ...value, weights: { ...value.weights, [k]: Number(e.target.value) } })} className="mt-1 h-6 w-full accent-cyan" />
             </label>
           ))}
-          {touched && errors.weights && <div className="text-[10px] text-bad">{errors.weights}</div>}
-          <p className="text-[10px] text-dim">score = Σ wₖ·scoreₖ / Σ wₖ. Weights are relative; changing them re-computes the suitability layer on the core.</p>
-          <Toggle checked={autoRerun} onChange={onAutoRerun} label="Re-run automatically when criteria change" disabled={!hasResult} />
+          {touched && errors.weights && <div className="text-[11px] text-bad">{errors.weights}</div>}
+          <p className="text-[11px] leading-snug text-dim">оценка = Σ wₖ·оценкаₖ / Σ wₖ. Веса относительные; изменение пересчитывает слой пригодности на ядре.</p>
+          <Toggle checked={autoRerun} onChange={onAutoRerun} label="Пересчитывать при изменении критериев" disabled={!hasResult} />
         </div>
       </Panel>
-      <Button variant="primary" className="w-full py-2" onClick={run} disabled={running} data-testid="run-analysis">{running ? 'Analysing on the core…' : 'Run terrain analysis'}</Button>
-      {touched && Object.keys(errors).length > 0 && <div className="text-[11px] text-bad">Fix {Object.keys(errors).length} invalid field(s) above.</div>}
+      <Button variant="primary" size="lg" className="w-full" onClick={run} disabled={running} data-testid="run-analysis" icon="play">{running ? 'Анализ на ядре…' : 'Запустить анализ рельефа'}</Button>
+      {touched && Object.keys(errors).length > 0 && <div className="text-[12px] text-bad">Исправьте поля с ошибками: {Object.keys(errors).length}.</div>}
     </div>
   )
 }

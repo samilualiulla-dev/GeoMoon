@@ -4,8 +4,8 @@ import { DEFAULT_SCENARIO_FORM, DEFAULT_SPACECRAFT_FORM, buildInitialConditions,
 
 describe('validation', () => {
   it('rejects empty, non-numeric, out of range', () => {
-    expect(validateNumber('', SC_FIELDS.dry_mass_kg)).toBe('Required')
-    expect(validateNumber('abc', SC_FIELDS.dry_mass_kg)).toBe('Must be a number')
+    expect(validateNumber('', SC_FIELDS.dry_mass_kg)).toBe('Обязательное поле')
+    expect(validateNumber('abc', SC_FIELDS.dry_mass_kg)).toBe('Должно быть числом')
     expect(validateNumber('0', SC_FIELDS.dry_mass_kg)).toMatch(/>/)
     expect(validateNumber('-5', SC_FIELDS.dry_mass_kg)).toMatch(/>/)
     expect(validateNumber('2e7', SC_FIELDS.dry_mass_kg)).toMatch(/≤/)
@@ -13,7 +13,7 @@ describe('validation', () => {
     expect(validateNumber('0', SC_FIELDS.fuel_mass_kg)).toBeNull()   // inclusive lower bound
   })
   it('integers and optional fields', () => {
-    expect(validateNumber('1.5', SC_FIELDS.number_of_engines)).toBe('Must be an integer')
+    expect(validateNumber('1.5', SC_FIELDS.number_of_engines)).toBe('Должно быть целым числом')
     expect(validateNumber('', SC_FIELDS.max_tilt_deg)).toBeNull()
     expect(validateNumber('90', SC_FIELDS.max_tilt_deg)).toMatch(/≤/)
   })
@@ -43,10 +43,10 @@ describe('payload builders', () => {
   })
   it('parses throttle schedules strictly', () => {
     expect(parseSchedule('0, 0\n10, 1').rows).toEqual([[0, 0], [10, 1]])
-    expect(parseSchedule('5, 1\n2, 0').error).toMatch(/increasing/)
-    expect(parseSchedule('0, 1.5').error).toMatch(/throttle/)
-    expect(parseSchedule('a, b').error).toMatch(/numeric/)
-    expect(parseSchedule('').error).toMatch(/empty/)
+    expect(parseSchedule('5, 1\n2, 0').error).toMatch(/строго возрастать/)
+    expect(parseSchedule('0, 1.5').error).toMatch(/дроссель/)
+    expect(parseSchedule('a, b').error).toMatch(/не число/)
+    expect(parseSchedule('').error).toMatch(/пустое/)
   })
   it('maps burn modes into the burn plan', () => {
     const t = { lat: 1, lon: 2 }

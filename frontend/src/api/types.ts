@@ -24,7 +24,7 @@ export interface DatasetInfo {
   elevation_unit: string; vertical_reference_radius_m: number
   synthetic: boolean; quantity: string; unit: string; usable_as_dem: boolean
   min_radius_m: number | null; recommended_radius_m: number | null
-  status: string; warnings: string[]; file: string
+  status: string; warnings: string[]; file: string; installed_at: string | null
 }
 
 export interface KnownProduct { product: string; provider: string; url: string; format: string; coverage: string; notes: string }
@@ -163,7 +163,7 @@ export interface SpacecraftDerived {
   mass_flow_full_throttle_kg_s: number; max_burn_time_s: number | null; delta_v_ideal_m_s: number
   footprint_radius_m: number; tipping_angle_deg: number; max_tilt_deg_used: number
 }
-export interface Spacecraft extends SpacecraftPayload { id: number; user_id: number | null; derived: SpacecraftDerived; warnings: string[]; created_at: string }
+export interface Spacecraft extends SpacecraftPayload { id: number; user_id: number | null; is_demo: boolean; derived: SpacecraftDerived; warnings: string[]; created_at: string }
 
 export interface IgnitionSuggestion {
   feasible: boolean; reason?: string
@@ -235,7 +235,7 @@ export type SeriesKey =
   | 'latitude_deg' | 'longitude_deg' | 'altitude_m' | 'distance_to_surface_m'
   | 'speed_surface_m_s' | 'vertical_speed_m_s' | 'horizontal_speed_m_s'
   | 'acceleration_m_s2' | 'proper_acceleration_m_s2' | 'thrust_n' | 'throttle'
-  | 'mass_kg' | 'fuel_remaining_kg' | 'distance_to_target_m'
+  | 'mass_kg' | 'fuel_remaining_kg' | 'distance_to_target_m' | 'thrust_dir_x' | 'thrust_dir_y' | 'thrust_dir_z'
 export type TimeSeries = Record<SeriesKey, number[]> & Record<string, number[]>
 
 export type CheckStatus = 'within_limits' | 'outside_limits' | 'not_assessed'

@@ -79,16 +79,16 @@ export function HeatmapCanvas({ analysis, layers, candidates, selected, onSelect
           ))}
         </svg>
         {candidates?.map((c, i) => (
-          <button key={i} aria-label={`Candidate ${i + 1}`} onClick={(e) => { e.stopPropagation(); onSelectCandidate?.(i) }}
+          <button key={i} aria-label={`Площадка ${i + 1}`} onClick={(e) => { e.stopPropagation(); onSelectCandidate?.(i) }}
             className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-1 text-[10px] font-semibold ${selected === i ? 'border-cyan bg-cyan text-space-950' : 'border-white/70 bg-space-950/80 text-white'}`}
             style={{ left: `${((c.col + 0.5) / g.cols) * 100}%`, top: `${((c.row + 0.5) / g.rows) * 100}%` }}>{i + 1}</button>
         ))}
-        <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-space-950/80 px-1.5 py-0.5 text-[10px] text-muted">N ↑ · {fmt(extentE, 0)} × {fmt(extentN, 0)} m</div>
+        <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-space-950/80 px-1.5 py-0.5 text-[10px] text-muted">С ↑ · {fmt(extentE, 0)} × {fmt(extentN, 0)} м</div>
       </div>
       {hover && hoverInfo && (
         <div className="num pointer-events-none fixed z-50 rounded border border-line-2 bg-space-950/95 p-2 text-[10px] shadow-lg" style={{ left: Math.min(hover.x + 14, window.innerWidth - 220), top: hover.y + 14 }}>
           <div className="text-ink">{formatLat(hoverInfo.ll.lat)} · {formatLon(hoverInfo.ll.lon)}</div>
-          {hoverInfo.vals.map(({ s, v }) => <div key={s.key} className="flex justify-between gap-4 text-muted"><span>{s.label}</span><span className="text-ink">{v === null ? 'no data' : `${fmt(v, 2)} ${s.unit}`}</span></div>)}
+          {hoverInfo.vals.map(({ s, v }) => <div key={s.key} className="flex justify-between gap-4 text-muted"><span>{s.label}</span><span className="text-ink">{v === null ? 'нет данных' : `${fmt(v, 2)} ${s.unit}`}</span></div>)}
         </div>
       )}
     </div>

@@ -198,7 +198,8 @@ def _package(segs, log, reason, cfg, ic, settings, omega, mu, Rref, surface_radi
         "inertial_velocity_x_m_s", "inertial_velocity_y_m_s", "inertial_velocity_z_m_s",
         "latitude_deg", "longitude_deg", "altitude_m", "distance_to_surface_m", "speed_surface_m_s",
         "vertical_speed_m_s", "horizontal_speed_m_s", "acceleration_m_s2", "proper_acceleration_m_s2", "thrust_n",
-        "throttle", "mass_kg", "fuel_remaining_kg", "distance_to_target_m")}
+        "throttle", "mass_kg", "fuel_remaining_kg", "distance_to_target_m",
+        "thrust_dir_x", "thrust_dir_y", "thrust_dir_z")}
     e0, n0, u0 = enu0
     peak_proper = 0.0
     for k, (t, y, th) in enumerate(zip(T, Y, TH)):
@@ -215,9 +216,10 @@ def _package(segs, log, reason, cfg, ic, settings, omega, mu, Rref, surface_radi
         vv = float(vbf @ up); vh = float(np.linalg.norm(vbf - vv * up))
         proper = F / m
         peak_proper = max(peak_proper, proper)
+        tdir = mci_to_bf(thrust_dir(t, y), t, omega) if F > 0 else np.zeros(3)
         row = [t, *rbf, *vbf, *r, *v, lat, lon, rn - Rref, rn - surface_radius(y, t), float(np.linalg.norm(vrel)), vv, vh,
                float(np.linalg.norm(a)), proper, F, th if F > 0 else 0.0, m, max(m - dry, 0.0),
-               great_circle_distance_m(lat, lon, *target, Rref)]
+               great_circle_distance_m(lat, lon, *target, Rref), *tdir]
         for key, val in zip(cols, row):
             cols[key].append(float(val))
     last = {k: v[-1] for k, v in cols.items()}

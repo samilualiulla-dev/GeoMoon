@@ -16,16 +16,16 @@ uvicorn app.asgi:app --reload --port 8000
 ```
 Open http://localhost:8000/docs. Without installed DEMs the API starts normally and terrain endpoints answer `404 data_unavailable`.
 
-## Run the UI
+## Run the UI (Russian interface)
 ```bash
 cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies /api to :8000)
 ```
 
 ## Tests
 ```bash
-cd backend && python -m pytest -q          # 161 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
+cd backend && python -m pytest -q          # 166 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
-cd frontend && npm test                    # 52 unit tests;  node e2e/smoke.cjs = 42-check browser walkthrough (needs running core)
+cd frontend && npm test                    # 73 unit tests;  node e2e/smoke.cjs = 60-check browser walkthrough (needs running core)
 ```
 
 ## Data
