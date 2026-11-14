@@ -95,7 +95,10 @@ def globe(dataset_id: str | None = None, rows: int = Query(180, ge=18, le=360), 
     info = cands[-1] if not dataset_id else cands[0]   # coarsest global dataset by default: light enough for a globe
     if info.synthetic and not allow_synthetic:
         raise ValidationFailure(f"Dataset '{info.id}' is SYNTHETIC test data; pass allow_synthetic=true to use it knowingly.")
-    g = ctx.data.read_global_grid(info.id, rows, cols)
+    key = (info.id, rows, cols)
+    if key not in ctx.globe_cache:
+        ctx.globe_cache[key] = ctx.data.read_global_grid(info.id, rows, cols)
+    g = dict(ctx.globe_cache[key])
     z = g.pop("elevation")
     from ..terrain.analysis import elevation_stats
     return {**g, "elevation_m": grid_to_json(z, max(rows, cols)), "statistics": elevation_stats(z),

@@ -30,21 +30,27 @@ export function threeToLatLon(p: THREE.Vector3): { lat: number; lon: number } {
   return { lat: Math.asin(Math.max(-1, Math.min(1, z))) / D2R, lon: Math.atan2(y, x) / D2R }
 }
 
-/** Local East/North offsets [m] of (lat, lon) relative to (lat0, lon0) on a sphere (azimuthal projection). */
+/** Azimuthal-equidistant projection about (lat0, lon0): local East/North offsets [m] of (lat, lon). Exact on a sphere, valid at the poles.
+ *  Same maths as the core's local metric grid (backend/app/lunar_data/engine.py), so drawn positions agree with the analysis grid. */
 export function eastNorthOffset(lat0: number, lon0: number, lat: number, lon: number, R = MOON_RADIUS_M): { east: number; north: number } {
-  const p0 = latLonToUnit(lat0, lon0), p = latLonToUnit(lat, lon)
-  const la0 = lat0 * D2R, lo0 = lon0 * D2R
-  const e = [-Math.sin(lo0), Math.cos(lo0), 0]
-  const n = [-Math.sin(la0) * Math.cos(lo0), -Math.sin(la0) * Math.sin(lo0), Math.cos(la0)]
-  const d = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]]
-  return { east: R * (d[0] * e[0] + d[1] * e[1] + d[2] * e[2]), north: R * (d[0] * n[0] + d[1] * n[1] + d[2] * n[2]) }
+  const la0 = lat0 * D2R, la = lat * D2R, dlo = (lon - lon0) * D2R
+  const cosC = Math.sin(la0) * Math.sin(la) + Math.cos(la0) * Math.cos(la) * Math.cos(dlo)
+  const c = Math.acos(Math.max(-1, Math.min(1, cosC)))
+  const y = Math.cos(la0) * Math.sin(la) - Math.sin(la0) * Math.cos(la) * Math.cos(dlo)
+  const x = Math.cos(la) * Math.sin(dlo)
+  const az = Math.atan2(x, y)
+  return { east: R * c * Math.sin(az), north: R * c * Math.cos(az) }
 }
 
-/** Inverse of the small-area approximation used for hover read-outs: ENU offset -> lat/lon. */
+/** Inverse of {@link eastNorthOffset}: local East/North offsets [m] -> lat/lon (longitude wrapped to [-180, 180)). */
 export function latLonFromOffset(lat0: number, lon0: number, east: number, north: number, R = MOON_RADIUS_M): { lat: number; lon: number } {
-  const lat = lat0 + (north / R) / D2R
-  const lon = lon0 + (east / (R * Math.max(Math.cos(lat0 * D2R), 1e-6))) / D2R
-  return { lat, lon: wrapLon(lon) }
+  const la0 = lat0 * D2R, lo0 = lon0 * D2R
+  const rho = Math.hypot(east, north) / R, az = Math.atan2(east, north)
+  const lat = Math.asin(Math.max(-1, Math.min(1, Math.sin(la0) * Math.cos(rho) + Math.cos(la0) * Math.sin(rho) * Math.cos(az))))
+  const lon = Math.abs(Math.cos(la0)) < 1e-9
+    ? lo0 + Math.atan2(east, la0 < 0 ? north : -north)       // centre on a pole: azimuth is measured from lon0
+    : lo0 + Math.atan2(Math.sin(az) * Math.sin(rho) * Math.cos(la0), Math.cos(rho) - Math.sin(la0) * Math.sin(lat))
+  return { lat: lat / D2R, lon: wrapLon(lon / D2R) }
 }
 
 /** Velocity direction unit vector in local ENU for azimuth (clockwise from north) and flight-path angle. */

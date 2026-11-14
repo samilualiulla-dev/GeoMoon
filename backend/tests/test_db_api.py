@@ -330,3 +330,21 @@ def test_coarse_dem_triggers_resolution_warning(client_pds):
     ok = client_pds.post("/api/terrain/analyze", json={"latitude_deg": 0.95, "longitude_deg": 23.05, "radius_m": 1000, "dataset_id": "plane_test",
                                                         "allow_synthetic": True, "save": False, "params": {"footprint_radius_m": 30}}).json()
     assert ok["summary"]["warnings"] == []                      # 20 m cells vs 30 m footprint radius: adequate
+
+
+def test_analysis_at_the_south_pole_from_a_global_cylindrical_dem(client_pds):
+    r = client_pds.post("/api/terrain/analyze", json={"latitude_deg": -89.99, "longitude_deg": 10.0, "radius_m": 150000, "dataset_id": "ldem_2",
+                                                       "allow_synthetic": True, "params": {"window_m": 100, "footprint_radius_m": 15}, "save": False, "max_grid": 32})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["geometry"]["cell_size_m"]["dx"] == j["geometry"]["cell_size_m"]["dy"]           # square metric cells near the pole
+    corners = j["geometry"]["corners"]
+    assert all(c["latitude_deg"] < -82 for c in corners.values())                                # the window really sits at the pole (150 km = 4.9 deg)
+    assert j["provenance"]["synthetic"] is True and j["summary"]["warnings"]
+
+
+def test_globe_endpoint_is_cached(client_pds):
+    a = client_pds.get("/api/lunar/globe", params={"allow_synthetic": True, "rows": 18, "cols": 36}).json()
+    b = client_pds.get("/api/lunar/globe", params={"allow_synthetic": True, "rows": 18, "cols": 36}).json()
+    assert a["elevation_m"] == b["elevation_m"]
+    assert len(client_pds.app.state.ctx.globe_cache) == 1             # computed once, served from cache

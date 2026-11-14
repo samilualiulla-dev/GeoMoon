@@ -18,6 +18,7 @@ class AppContext:
         self.settings.storage_dir.mkdir(parents=True, exist_ok=True)
         self.registry = DatasetRegistry(self.settings.dem_dir)
         self.data = LunarDataEngine(self.registry, max_cells=self.settings.max_patch_cells)
+        self.globe_cache: dict = {}
         self.db_engine = make_engine(self.settings.database_url)
         self.SessionLocal = make_session_factory(self.db_engine)
         with self.SessionLocal() as db:
@@ -25,6 +26,7 @@ class AppContext:
 
     def sync_sources(self, db: Session) -> None:
         """Mirror installed datasets into the data_sources table (provenance record)."""
+        self.globe_cache.clear()
         seen = set()
         for info in self.registry.datasets.values():
             d = info.to_dict()

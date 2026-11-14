@@ -31,6 +31,25 @@ describe('geo', () => {
     const o2 = eastNorthOffset(10, 20, back.lat, back.lon)
     expect(o2.east).toBeCloseTo(500, 0); expect(o2.north).toBeCloseTo(-300, 0)
   })
+  it('azimuthal offsets round-trip everywhere, including the poles', () => {
+    for (const [la0, lo0] of [[0, 0], [45, 100], [-89.9, 30], [-90, 0], [-90, 45], [90, 0], [89.99, -170], [-60, 179.9]]) {
+      for (const [e, n] of [[1000, -700], [-2500, 1500], [40000, -25000], [0, 0]]) {
+        const ll = latLonFromOffset(la0, lo0, e, n)
+        const back = eastNorthOffset(la0, lo0, ll.lat, ll.lon)
+        expect(back.east).toBeCloseTo(e, 3); expect(back.north).toBeCloseTo(n, 3)
+      }
+    }
+  })
+  it('matches the core: 5 km due north is exactly 5000/R rad of latitude', () => {
+    const ll = latLonFromOffset(10, 20, 0, 5000)
+    expect(ll.lat).toBeCloseTo(10 + (5000 / MOON_RADIUS_M) * 180 / Math.PI, 9); expect(ll.lon).toBeCloseTo(20, 9)
+  })
+  it('keeps metres true next to the south pole (no 1/cos(lat) blow-up)', () => {
+    const ll = latLonFromOffset(-89.99, 30, 3000, 0)
+    const d = eastNorthOffset(-89.99, 30, ll.lat, ll.lon)
+    expect(Math.hypot(d.east, d.north)).toBeCloseTo(3000, 3)
+    expect(ll.lat).toBeLessThan(-89.9); expect(Number.isFinite(ll.lon)).toBe(true)
+  })
   it('velocity vector from azimuth/FPA', () => {
     const v = velocityVectorEnu(90, 0, 10); expect(v.e).toBeCloseTo(10); expect(v.n).toBeCloseTo(0)
     const d = velocityVectorEnu(0, -90, 5); expect(d.u).toBeCloseTo(-5); expect(d.e).toBeCloseTo(0)

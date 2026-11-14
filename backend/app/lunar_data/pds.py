@@ -54,6 +54,7 @@ def _convert(raw: str):
 def parse_label(text: str) -> dict:
     """Parse a PDS3 label into a flat dict (the FIRST occurrence of a repeated keyword wins). Pointers ('^IMAGE') are kept with their caret."""
     out: dict = {}
+    units: dict[str, str] = {}
     lines = _strip_comments(text).splitlines()
     i = 0
     while i < len(lines):
@@ -77,8 +78,26 @@ def parse_label(text: str) -> dict:
         elif val.startswith("(") and ")" not in val:
             while i < len(lines) and ")" not in val:
                 val += " " + lines[i].strip(); i += 1
-        out.setdefault(key, _convert(val))   # first occurrence wins (e.g. product-level DESCRIPTION, not the IMAGE object one)
+        if key not in out:   # first occurrence wins (e.g. product-level DESCRIPTION, not the IMAGE object one)
+            out[key] = _convert(val)
+            mu = re.search(r"<([^>]*)>\s*$", val)
+            if mu:
+                units[key] = mu.group(1).strip()
+    out["__units__"] = units
     return out
+
+
+def length_in_m(label: dict, key: str) -> float | None:
+    """Numeric label value converted to metres using its <unit> tag (km, m). Unit-less values are assumed to be metres."""
+    if key not in label:
+        return None
+    u = label.get("__units__", {}).get(key, "m").lower().replace(" ", "")
+    v = float(label[key])
+    if u.startswith("km"):
+        return v * 1000.0
+    if u.startswith("m"):
+        return v
+    raise PdsError(f"Unsupported unit <{u}> for {key}")
 
 
 _DTYPES = {("LSB_INTEGER", 16): "<i2", ("MSB_INTEGER", 16): ">i2", ("LSB_INTEGER", 32): "<i4", ("MSB_INTEGER", 32): ">i4",
@@ -115,13 +134,14 @@ def _georef(label: dict, width: int, height: int):
         west, east = float(label["WESTERNMOST_LONGITUDE"]), float(label["EASTERNMOST_LONGITUDE"])
         south, north = float(label["MINIMUM_LATITUDE"]), float(label["MAXIMUM_LATITUDE"])
         transform = from_bounds(west, south, east, north, width, height)
-        res_m = float(label["MAP_SCALE"]) * 1000.0 if "MAP_SCALE" in label else None
+        ppd = float(label["MAP_RESOLUTION"]) if "MAP_RESOLUTION" in label else None
+        res_m = radius_m * np.pi / 180.0 / ppd if ppd else length_in_m(label, "MAP_SCALE")
         return crs, transform, res_m, radius_m, f"{south:g}..{north:g} N, {west:g}..{east:g} E"
     if "POLAR" in proj and "STEREO" in proj:
         lat0 = float(label["CENTER_LATITUDE"]); lon0 = float(label.get("CENTER_LONGITUDE", 0.0))
         if abs(abs(lat0) - 90.0) > 1e-6:
             raise PdsError(f"Polar stereographic with CENTER_LATITUDE={lat0} is not supported (expected +/-90)")
-        scale = float(label["MAP_SCALE"])  # m / pixel for polar products
+        scale = length_in_m(label, "MAP_SCALE")  # metres / pixel (unit tag respected)
         lo, so = float(label["LINE_PROJECTION_OFFSET"]), float(label["SAMPLE_PROJECTION_OFFSET"])
         # offsets are pixel-centre indices (0-based) of the projection origin -> raster edge = origin -/+ (offset + 0.5) px
         left, top = -(so + 0.5) * scale, (lo + 0.5) * scale
@@ -150,7 +170,8 @@ def _image_offset(label: dict, lbl_path: Path) -> tuple[Path, int]:
     return p, off
 
 
-def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1024, mark_synthetic: bool = False) -> ImportResult:
+def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1024, mark_synthetic: bool = False,
+               overview_min_pixels: int = 4_000_000) -> ImportResult:
     lbl_path, out_dir = Path(lbl_path), Path(out_dir)
     label = parse_label(lbl_path.read_text(encoding="latin-1"))
     for k in ("LINES", "LINE_SAMPLES", "SAMPLE_TYPE", "SAMPLE_BITS", "SCALING_FACTOR", "OFFSET", "A_AXIS_RADIUS"):
@@ -186,6 +207,14 @@ def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1
         for r in range(0, height, chunk_rows):
             h = min(chunk_rows, height - r)
             dst.write(np.asarray(arr[r:r + h]).astype(out_dtype, copy=False), 1, window=Window(0, r, width, h))
+    if width * height >= overview_min_pixels:
+        # pyramid: makes whole-Moon (globe) and zoomed-out reads fast instead of scanning gigabytes
+        from rasterio.enums import Resampling
+        with rasterio.open(tif, "r+") as dst:
+            levels = [f for f in (2, 4, 8, 16, 32, 64, 128) if width // f >= 256 and height // f >= 128]
+            if levels:
+                dst.build_overviews(levels, Resampling.average)
+                dst.update_tags(ns="rio_overview", resampling="average")
     descr = label.get("DESCRIPTION", "")
     meta = {
         "name": f"LOLA {label.get('PRODUCT_ID')} ({label.get('DATA_SET_ID')})",
@@ -200,7 +229,7 @@ def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1
         "source_label_file": lbl_path.name, "source_description": descr,
         "projection": str(label.get("MAP_PROJECTION_TYPE")), "map_resolution": label.get("MAP_RESOLUTION"),
         "missing_constant": missing, "imported_by": "geomoon import_pds",
-        "sample_range_dn": [label.get("DERIVED_MINIMUM"), label.get("DERIVED_MAXIMUM")],
+        "sample_range_dn": [label.get("MINIMUM", label.get("DERIVED_MINIMUM")), label.get("MAXIMUM", label.get("DERIVED_MAXIMUM"))],
     }
     meta_path = tif.with_suffix(".meta.json")
     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")

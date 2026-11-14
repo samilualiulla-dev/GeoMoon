@@ -166,3 +166,50 @@ def test_filename_case_and_record_pointer(tmp_path):
     (d / "ldrm_16.lbl").write_text(small_label("LDRM_16", 90, 180, scale=0.001, offset=0))
     write_img(d / "ldrm_16.img", np.ones((90, 180)))                              # lower-case file names (Windows downloads)
     assert import_pds(d / "ldrm_16.lbl", tmp_path / "out").shape == (90, 180)
+
+
+# ---- LDEM_128 (real label supplied by the user: 236.901 m/pix, 2.1 GB IMG) --------------------------------------
+LDEM128 = (FIX / "LDEM_128.LBL").read_text()
+
+
+def test_parse_real_ldem128_label():
+    l = parse_label(LDEM128)
+    assert (l["PRODUCT_ID"], l["LINES"], l["LINE_SAMPLES"]) == ("LDEM_128", 23040, 46080)
+    assert l["SCALING_FACTOR"] == 0.5 and l["OFFSET"] == 1737400.0 and "MISSING_CONSTANT" not in l
+    assert (l["MINIMUM"], l["MAXIMUM"]) == (-18255, 21557)                    # DN -> -9.13 km .. +10.78 km
+    assert len(l["MISSION_PHASE_NAME"]) == 6 and "THIRD EXTENDED SCIENCE MISSION" in l["MISSION_PHASE_NAME"]
+    assert l["__units__"]["MAP_SCALE"] == "m/pix"                              # NOT km (LDRM_16 uses km/pix)
+    assert l["DESCRIPTION"].startswith("This data product is a shape map (radius)")
+    assert classify(l) == "elevation"
+    assert l["MINIMUM"] * 0.5 == pytest.approx(-9127.5) and l["MAXIMUM"] * 0.5 == pytest.approx(10778.5)
+
+
+def test_map_scale_units_are_respected():
+    from app.lunar_data.pds import _georef, length_in_m
+    a, b = parse_label(REAL_LABEL), parse_label(LDEM128)
+    assert length_in_m(a, "MAP_SCALE") == pytest.approx(1895.2094, rel=1e-6)   # <km/pix>
+    assert length_in_m(b, "MAP_SCALE") == pytest.approx(236.901)               # <m/pix>
+    assert _georef(a, 5760, 2880)[2] == pytest.approx(1895.21, abs=0.01)
+    assert _georef(b, 46080, 23040)[2] == pytest.approx(236.90, abs=0.01)      # from MAP_RESOLUTION, consistent with the label
+
+
+def test_import_ldem128_scaled_down_with_overviews(tmp_path):
+    d = tmp_path / "in"; d.mkdir()
+    t = LDEM128.replace("LDEM_128", "LDEM_4")
+    t = re.sub(r"(LINES\s+=\s+)23040", r"\g<1>720", t); t = re.sub(r"(LINE_SAMPLES\s+=\s+)46080", r"\g<1>1440", t)
+    t = re.sub(r"(MAP_RESOLUTION\s+=\s+)128", r"\g<1>4", t)
+    (d / "LDEM_4.LBL").write_text(t)
+    rows = np.arange(720)[:, None] * np.ones((1, 1440))
+    write_img(d / "LDEM_4.IMG", (rows - 360).astype("<i2"))                    # DN -360..359 -> -180..+179.5 m
+    r = import_pds(d / "LDEM_4.LBL", tmp_path / "dem", overview_min_pixels=100_000)
+    assert r.meta["quantity"] == "elevation" and r.meta["elevation_offset"] == pytest.approx(0.0)
+    assert r.meta["resolution_m_per_px"] == pytest.approx(1737400 * np.pi / 180 / 4)
+    assert r.meta["nominal_coverage"].startswith("-90..90 N")
+    with rasterio.open(r.tif) as ds:
+        assert ds.overviews(1) and ds.nodata is None
+    eng = LunarDataEngine(DatasetRegistry(tmp_path / "dem"))
+    assert eng.elevation_at("ldem_4", 90 - 360.5 / 4, 10.0) == pytest.approx(0.0, abs=1e-6)     # DN 0 at row 360 -> 0 m
+    rep = sanity_report(r.tif, r.meta)
+    assert rep["min"] == pytest.approx(-179.0, abs=2.0) and not rep["warnings"]
+    g = eng.read_global_grid("ldem_4", 36, 72)                                 # overview-backed decimated read
+    assert g["elevation"].shape == (36, 72) and g["elevation"][0].mean() < g["elevation"][-1].mean()   # row index grows southward: -180 m (north) -> +180 m (south)

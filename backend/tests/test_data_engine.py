@@ -126,13 +126,6 @@ def test_polar_stereographic_dataset(tmp_path):
     assert la == pytest.approx(-89.8, abs=1e-6)
 
 
-def test_geographic_dataset_near_pole_rejected(tmp_path):
-    d = tmp_path / "g"; d.mkdir()
-    write_dem(d / "g.tif", plane(100), lat0=90.0, lon0=0.0)
-    with pytest.raises(ValidationFailure):
-        engine(d).read_patch("g", 89.99, 0.05, 500)
-
-
 def test_scale_offset_applied(tmp_path):
     d = tmp_path / "s"; d.mkdir()
     write_dem(d / "s.tif", np.full((60, 60), 10.0), extra_meta={"elevation_scale": 0.5, "elevation_offset": 3.0})

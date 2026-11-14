@@ -159,6 +159,20 @@ const ok = (name, cond, extra = '') => { results.push({ name, ok: !!cond, extra 
   ok('known products listed with SLDEM caveat', /does not cover the lunar poles|NO coverage|ONLY/i.test(await page.textContent('[data-testid="known"]')))
   await shot('10-data-sources')
 
+  // 7b analysis at the south pole from the global cylindrical DEM (local metric grid)
+  await page.click('text=Terrain Analysis'); await page.waitForSelector('[data-testid="run-analysis"]')
+  await page.selectOption('#dataset', 'synthetic_global_demo')
+  await page.fill('[data-testid="f-latitude_deg"]', '-89.99'); await page.fill('[data-testid="f-longitude_deg"]', '0')
+  await page.fill('[data-testid="f-radius_m"]', '150000'); await page.fill('[data-testid="f-window_m"]', '100'); await page.fill('[data-testid="f-footprint_radius_m"]', '15')
+  await page.click('[data-testid="run-analysis"]'); await page.waitForSelector('[data-testid="summary"]', { timeout: 45000 })
+  ok('south-pole analysis runs from a cylindrical DEM', /Slope mean/.test(await page.textContent('[data-testid="summary"]')))
+  ok('coarse-resolution warning is shown', await page.locator('[data-testid="resolution-warning"]').count() >= 1, (await page.locator('[data-testid="resolution-warning"]').first().textContent()).slice(0, 70))
+  const hm2 = await page.locator('[data-testid="heatmap"]').boundingBox()
+  await page.mouse.move(hm2.x + hm2.width * 0.9, hm2.y + hm2.height * 0.1); await page.waitForTimeout(300)
+  const lat = (await page.textContent('body')).match(/(\d+\.\d+)° S/)
+  ok('hover latitude near the pole is south of 82 S', lat && Number(lat[1]) > 82, lat && lat[0])
+  await shot('09b-south-pole-analysis')
+
   // 8 mobile layout
   await page.setViewportSize({ width: 390, height: 800 }); await page.goto(BASE + '/'); await page.waitForTimeout(800)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
