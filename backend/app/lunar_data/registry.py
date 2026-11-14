@@ -44,6 +44,9 @@ class DatasetInfo:
     warnings: list[str] = field(default_factory=list)
     status: str = "available"
 
+    def coverage_has_pole(self) -> bool:
+        return bool(self.includes_pole)
+
     def to_dict(self) -> dict:
         return {
             "id": self.id, "name": self.meta.get("name"), "provider": self.meta.get("provider"),

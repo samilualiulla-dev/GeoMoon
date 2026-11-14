@@ -171,7 +171,7 @@ def _image_offset(label: dict, lbl_path: Path) -> tuple[Path, int]:
 
 
 def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1024, mark_synthetic: bool = False,
-               overview_min_pixels: int = 4_000_000) -> ImportResult:
+               overview_min_pixels: int = 4_000_000, img_path: str | Path | None = None) -> ImportResult:
     lbl_path, out_dir = Path(lbl_path), Path(out_dir)
     label = parse_label(lbl_path.read_text(encoding="latin-1"))
     for k in ("LINES", "LINE_SAMPLES", "SAMPLE_TYPE", "SAMPLE_BITS", "SCALING_FACTOR", "OFFSET", "A_AXIS_RADIUS"):
@@ -182,11 +182,18 @@ def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1
     if dt is None:
         raise PdsError(f"Unsupported sample type {label['SAMPLE_TYPE']}/{label['SAMPLE_BITS']}")
     img, offset_bytes = _image_offset(label, lbl_path)
+    if img_path is not None:                      # image supplied separately (e.g. unzipped under another name/folder)
+        img = Path(img_path)
     if not img.exists():
         raise PdsError(f"Image file {img.name} not found next to the label ({lbl_path.parent})")
     expected = offset_bytes + height * width * np.dtype(dt).itemsize
     if img.stat().st_size < expected:
-        raise PdsError(f"{img.name} is {img.stat().st_size} bytes but the label needs {expected}; the download is incomplete or truncated")
+        raise PdsError(f"{img.name} is {img.stat().st_size} bytes but the label ({label.get('PRODUCT_ID')}: {width} x {height} px, {np.dtype(dt).itemsize * 8} bit) "
+                       f"needs {expected}. Either the download is incomplete/truncated, or the label belongs to a DIFFERENT product than this image "
+                       f"(e.g. LDEM_128's label with the LDEM_16 image). Use the .LBL with the same product name as the .IMG.")
+    if img.stat().st_size > expected + 2 * int(label.get("RECORD_BYTES", 0) or 0) + 1:
+        raise PdsError(f"{img.name} is {img.stat().st_size} bytes but the label ({label.get('PRODUCT_ID')}) describes only {expected}: "
+                       "the label belongs to a different (smaller) product than this image.")
     crs, transform, res_m, radius_m, coverage = _georef(label, width, height)
     quantity = classify(label)
     scale, offset = float(label["SCALING_FACTOR"]), float(label["OFFSET"])
@@ -226,7 +233,7 @@ def import_pds(lbl_path: str | Path, out_dir: str | Path, *, chunk_rows: int = 1
         "resolution_m_per_px": res_m, "vertical_reference_radius_m": radius_m,
         "elevation_scale": scale, "elevation_offset": phys_offset,
         "nominal_coverage": coverage, "synthetic": mark_synthetic,
-        "source_label_file": lbl_path.name, "source_description": descr,
+        "source_label_file": lbl_path.name, "source_description": descr, "label_note": label.get("GEOMOON_NOTE"),
         "projection": str(label.get("MAP_PROJECTION_TYPE")), "map_resolution": label.get("MAP_RESOLUTION"),
         "missing_constant": missing, "imported_by": "geomoon import_pds",
         "sample_range_dn": [label.get("MINIMUM", label.get("DERIVED_MINIMUM")), label.get("MAXIMUM", label.get("DERIVED_MAXIMUM"))],

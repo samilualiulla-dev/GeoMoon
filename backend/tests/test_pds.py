@@ -149,7 +149,7 @@ def test_truncated_or_missing_img_reported(tmp_path):
     with pytest.raises(PdsError, match="not found"):
         import_pds(d / "LDRM_16.LBL", tmp_path / "out")
     (d / "LDRM_16.IMG").write_bytes(b"\0" * 1000)
-    with pytest.raises(PdsError, match="incomplete or truncated"):
+    with pytest.raises(PdsError, match="incomplete/truncated"):
         import_pds(d / "LDRM_16.LBL", tmp_path / "out")
 
 
@@ -213,3 +213,20 @@ def test_import_ldem128_scaled_down_with_overviews(tmp_path):
     assert rep["min"] == pytest.approx(-179.0, abs=2.0) and not rep["warnings"]
     g = eng.read_global_grid("ldem_4", 36, 72)                                 # overview-backed decimated read
     assert g["elevation"].shape == (36, 72) and g["elevation"][0].mean() < g["elevation"][-1].mean()   # row index grows southward: -180 m (north) -> +180 m (south)
+
+
+def test_image_supplied_separately_and_label_mismatch_is_explained(tmp_path):
+    d = tmp_path / "in"; d.mkdir()
+    (d / "LDRM_16.LBL").write_text(small_label("LDRM_16", 90, 180, scale=0.001, offset=0))
+    other = tmp_path / "unzipped"; other.mkdir()
+    write_img(other / "ldrm_16.img", np.ones((90, 180)))
+    r = import_pds(d / "LDRM_16.LBL", tmp_path / "out", img_path=other / "ldrm_16.img")          # image elsewhere, other case
+    assert r.shape == (90, 180)
+    # a bigger image than the label describes (label of a smaller product with a larger image)
+    write_img(other / "big.img", np.ones((180, 360)))
+    with pytest.raises(PdsError, match="DIFFERENT product|different \\(smaller\\) product"):
+        import_pds(d / "LDRM_16.LBL", tmp_path / "out2", img_path=other / "big.img")
+    # an image smaller than the label needs (LDEM_128 label with an LDEM_16 sized file)
+    write_img(other / "small.img", np.ones((45, 90)))
+    with pytest.raises(PdsError, match="DIFFERENT product"):
+        import_pds(d / "LDRM_16.LBL", tmp_path / "out3", img_path=other / "small.img")

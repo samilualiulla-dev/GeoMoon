@@ -23,13 +23,13 @@ cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies 
 
 ## Tests
 ```bash
-cd backend && python -m pytest -q          # 153 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
+cd backend && python -m pytest -q          # 158 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
 cd frontend && npm test                    # 47 unit tests;  node e2e/smoke.cjs = 42-check browser walkthrough (needs running core)
 ```
 
 ## Data
-Real NASA LOLA data: download `LDEM_16.IMG` + `LDEM_16.LBL`, then `python backend/scripts/import_pds.py PATH/LDEM_16.LBL` — see [`documentation/DATA_SETUP.md`](documentation/DATA_SETUP.md).
+Real NASA LOLA data: download `LDEM_16` (or `LDEM_128`), then `python backend/scripts/import_pds.py datasets/labels/LDEM_16.LBL --img PATH/ldem_16.img` and `python backend/scripts/verify_data.py` — see [`documentation/DATA_SETUP.md`](documentation/DATA_SETUP.md).
 For a software-only demo: `python backend/scripts/make_demo_dem.py --global` (**synthetic**, opt-in via `allow_synthetic=true`, always flagged).
 
 ## 60-second walkthrough (demo DEM)
@@ -57,7 +57,7 @@ curl -s  "$B/simulation/1/results" | python -m json.tool | less
 * No real DEM is bundled (build environment could not reach NASA hosts); the demo DEM is synthetic.
 * Point-mass gravity, no attitude dynamics, no guidance; open-loop burn scenarios only; spherical Moon.
 * DEM metrics cannot detect boulders / craters below ~2 cells; hazard detection is geometric only (no imported crater catalogues yet).
-* The PDS3 importer is tested on the real `LDRM_16` and `LDEM_128` labels but **not yet on real `.IMG` bodies or polar-stereographic products** (no real data was reachable when written): the orientation of polar products must be checked once (see DATA_SETUP).
+* The importer is verified end-to-end on a real `LDEM_16.img` (Apollo 11 site −1.92 km, highest point +10.67 km, SPA floor −8.95 km, far side higher than near side) and on the real `LDRM_16`/`LDEM_128` labels. **Not yet verified on a real polar-stereographic product** (`LDEM_80S_*`): its orientation must be checked once (see DATA_SETUP).
 * Within half a pixel of a pole the point elevation uses the nearest edge row (no row beyond it to interpolate).
 * SQLite only (schema is PostgreSQL-compatible); background tasks are in-process (no queue); no authentication; PDF export not implemented (JSON report only).
 * The ignition-altitude helper is an approximate constant-deceleration estimate; open-loop burns will not generally give a soft touchdown without tuning.

@@ -13,7 +13,19 @@ LOLA gridded products come as a raw `.IMG` plus a text label `.LBL`. GeoMoon rea
    ```
    It writes a compressed GeoTIFF + `.meta.json` into `datasets/dem/`, converts the label's scale/offset to metres above the 1737.4 km
    reference sphere and prints a plausibility report (elevation must be roughly −9 … +11 km).
+   If the `.img` is not next to the label (or has another name/case, e.g. after unzipping), point to it:
+   ```powershell
+   python scripts/import_pds.py ..\datasets\labels\LDEM_16.LBL --img C:\GeoMoonData\ldem_16.img
+   ```
+   **The label must be the one of the SAME product as the image** (`LDEM_16.LBL` for `ldem_16.img`, `LDEM_128.LBL` for `LDEM_128.IMG`).
+   The importer refuses a mismatch with an explanation. `datasets/labels/LDEM_16.LBL` is shipped with the project for archives that contain only the `.img`
+   (it was reconstructed from the PDS4 label geometry — see the note inside the file; product version recorded as "unknown").
 3. Restart the backend (or press *Rescan* in Data Sources).
+4. **Verify the import** against well-known facts (Apollo sites, basin floors, highest point, far/near side):
+   ```powershell
+   python scripts/verify_data.py
+   ```
+   Expected: `ALL CHECKS PASSED`. A FAIL means a wrong scale/offset or a flipped/shifted map — do not trust the dataset until it passes.
 
 **Check the product name:** `LDEM_*` = elevation (what GeoMoon needs). `LDRM_*` = roughness and `LDSM_*` = slope maps — they import fine and are
 listed in Data Sources but are marked *not a DEM* and are never used for terrain analysis.

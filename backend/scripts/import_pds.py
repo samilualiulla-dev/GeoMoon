@@ -1,6 +1,6 @@
 """Import a LOLA PDS3 product (.LBL + .IMG) into GeoMoon.
 
-usage:  python scripts/import_pds.py PATH/TO/LDEM_16.LBL [--out ../datasets/dem]
+usage:  python scripts/import_pds.py PATH/TO/LDEM_16.LBL [--img PATH/TO/ldem_16.img] [--out ../datasets/dem]
 
 Reads the label, writes <product>.tif + <product>.meta.json into the DEM directory, prints a plausibility report.
 The .IMG must sit in the same folder as the .LBL.  Nothing is downloaded or invented.
@@ -15,10 +15,11 @@ from app.lunar_data.pds import PdsError, import_pds, sanity_report  # noqa: E402
 
 p = argparse.ArgumentParser()
 p.add_argument("label", type=Path, help="path to the .LBL file (the .IMG must be next to it)")
+p.add_argument("--img", type=Path, default=None, help="path to the .IMG/.img if it is not next to the label under the label's file name")
 p.add_argument("--out", type=Path, default=Path(__file__).resolve().parents[2] / "datasets" / "dem")
 a = p.parse_args()
 try:
-    r = import_pds(a.label, a.out)
+    r = import_pds(a.label, a.out, img_path=a.img)
 except (PdsError, OSError) as e:
     sys.exit(f"IMPORT FAILED: {e}")
 rep = sanity_report(r.tif, r.meta)
