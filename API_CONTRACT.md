@@ -39,6 +39,9 @@ Request: `{"name":"Site A","latitude_deg":0.95,"longitude_deg":23.05,"radius_m":
 
 > **Grids near the poles.** For a geographic-CRS (lon/lat) DEM, if `|lat| + radius ≥ 80°` the core resamples the raster onto a local **azimuthal-equidistant square-metre grid centred on the request point** (bilinear, NaN stays NaN, cell never finer than the source). `geometry.cell_size_m.dx == dy`; `row0_is_north` holds in the *local* frame (when the centre is exactly on a pole, azimuth is measured from the requested longitude). Corners, candidate and hover lat/lon come from the same mapping, so they are exact.
 
+> **Region size vs. DEM resolution.** A region must be ≥ 3 cells across. If not, the core answers `422 validation_failed` with `details.min_radius_m`, `details.recommended_radius_m`, `details.resolution_m_per_px`. `GET /data/sources` lists `min_radius_m` (= 1.5 × cell) and `recommended_radius_m` (≈ 20 × cell, capped at 200 000) per dataset.
+> **Simulation terrain window.** If `terrain.radius_m` holds fewer than ~20 cells across (radius < 10 × cell), the core enlarges it and reports it in `summary.warnings`; the radius actually used is `summary.terrain_radius_m` (+ `summary.terrain_dataset`). When the DEM cell is larger than the vehicle footprint radius the surface assessment is `not_assessed` (`surface_assessment.resolution_too_coarse = true`), never `within_limits`.
+
 ### `GET /lunar/terrain`
 Query: `latitude_deg, longitude_deg, radius_m (≤200000), dataset_id?, max_grid=128 (8–512), allow_synthetic=false`.
 Response: `{"geometry":{…},"elevation_m":{rows,cols,data},"statistics":{min_m,max_m,mean_m,std_m,range_m,valid_fraction},"provenance":{…}}`.

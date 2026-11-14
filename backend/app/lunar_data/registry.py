@@ -44,6 +44,14 @@ class DatasetInfo:
     warnings: list[str] = field(default_factory=list)
     status: str = "available"
 
+    def min_radius_m(self) -> float | None:
+        """Smallest region half-width the core accepts: 3 cells across (2R >= 3 cells)."""
+        return None if not self.resolution_m_per_px else 1.5 * self.resolution_m_per_px
+
+    def recommended_radius_m(self) -> float | None:
+        """A region ~40 cells across for a meaningful analysis, capped at the API limit (200 km)."""
+        return None if not self.resolution_m_per_px else float(min(max(20.0 * self.resolution_m_per_px, 250.0), 200_000.0))
+
     def coverage_has_pole(self) -> bool:
         return bool(self.includes_pole)
 
@@ -60,7 +68,8 @@ class DatasetInfo:
             "shape_rows_cols": list(self.shape), "elevation_unit": "m",
             "vertical_reference_radius_m": self.meta.get("vertical_reference_radius_m", MOON_RADIUS_M),
             "synthetic": self.synthetic, "quantity": self.quantity, "unit": self.meta.get("unit", "m"),
-            "usable_as_dem": self.quantity == "elevation", "status": self.status, "warnings": self.warnings,
+            "usable_as_dem": self.quantity == "elevation",
+            "min_radius_m": self.min_radius_m(), "recommended_radius_m": self.recommended_radius_m(), "status": self.status, "warnings": self.warnings,
             "file": self.path.name,
         }
 

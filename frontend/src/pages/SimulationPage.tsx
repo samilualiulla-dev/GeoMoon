@@ -50,7 +50,7 @@ export default function SimulationPage() {
     if (!res.summary.terrain_used) { setTerrainNote(res.summary.warnings.find((w) => w.startsWith('Terrain')) ?? 'The core had no terrain data for this run.'); return }
     try {
       const sc = inputs.scenario
-      setTerrain(await api.terrain({ latitude_deg: res.trajectory.target.latitude_deg, longitude_deg: res.trajectory.target.longitude_deg, radius_m: Number(sc.terrain_radius_m), dataset_id: inputs.datasetId, max_grid: 160, allow_synthetic: inputs.allowSynthetic }))
+      setTerrain(await api.terrain({ latitude_deg: res.trajectory.target.latitude_deg, longitude_deg: res.trajectory.target.longitude_deg, radius_m: res.summary.terrain_radius_m ?? Number(sc.terrain_radius_m), dataset_id: res.summary.terrain_dataset ?? inputs.datasetId, max_grid: 160, allow_synthetic: inputs.allowSynthetic }))
     } catch (e) { setTerrainNote(`Terrain view unavailable: ${asApiError(e).describe()}`) }
   }, [inputs.scenario, inputs.datasetId, inputs.allowSynthetic])
 

@@ -12,6 +12,7 @@ import { LAYER_STYLES } from '../lib/colormap'
 import { fmt, humanize, pct } from '../lib/format'
 import { formatLat, formatLon } from '../lib/geo'
 import { parseNum } from '../lib/validation'
+import { pickDataset, radiusAdvice } from '../lib/datasets'
 import { useInputs, useSession } from '../store/appStore'
 
 const ALL_LAYERS = ['elevation', 'slope', 'roughness', 'local_relief', 'hazard', 'suitability', 'class']
@@ -65,6 +66,8 @@ export default function TerrainPage() {
   }, [form.slope_limit_deg, form.footprint_radius_m, form.window_m, form.roughness_limit_m, form.relief_limit_m, form.tpi_limit_m, form.hazard_safe_distance_m,
     form.suitable_threshold, form.max_candidates, form.roughness_method, form.weights])
 
+  const advice = useMemo(() => radiusAdvice(pickDataset(sources.data?.installed ?? [], parseNum(form.latitude_deg) ?? 0, parseNum(form.longitude_deg) ?? 0, { datasetId: inputs.datasetId, allowSynthetic: inputs.allowSynthetic }), parseNum(form.radius_m) ?? 0), [sources.data, form.latitude_deg, form.longitude_deg, form.radius_m, inputs.datasetId, inputs.allowSynthetic])
+  useEffect(() => { if (advice?.tooSmall) setForm((f) => ({ ...f, radius_m: String(Math.round(advice.recommended_m)) })) }, [advice?.dataset.id, advice?.tooSmall]) // eslint-disable-line react-hooks/exhaustive-deps
   const cand: Candidate | null = analysis && selected !== null ? analysis.candidates[selected] ?? null : null
   const toggleLayer = (k: string, s: LayerState) => setLayers((p) => ({ ...p, [k]: s }))
   const lat = parseNum(form.latitude_deg), lon = parseNum(form.longitude_deg)
@@ -88,7 +91,7 @@ export default function TerrainPage() {
           allowSynthetic={inputs.allowSynthetic} onAllowSynthetic={inputs.setAllowSynthetic} onRun={() => run(form)} running={running}
           vehicleFootprint={vehicle.data?.derived.footprint_radius_m ?? null} vehicleTilt={vehicle.data?.derived.max_tilt_deg_used ?? null}
           onUseVehicle={() => vehicle.data && setForm({ ...form, footprint_radius_m: String(vehicle.data.derived.footprint_radius_m), slope_limit_deg: String(vehicle.data.derived.max_tilt_deg_used) })}
-          autoRerun={auto} onAutoRerun={setAuto} hasResult={!!analysis} />
+          autoRerun={auto} onAutoRerun={setAuto} hasResult={!!analysis} radiusAdvice={advice} />
       </div>
       <div className="min-w-0 space-y-3">
         {error != null && <ErrorBanner error={error} title="Terrain analysis failed" onRetry={() => run(form)} />}

@@ -60,6 +60,7 @@ npm i -D playwright && npx playwright install chromium     # one time
 npm run dev &                                              # then:
 node e2e/smoke.cjs        # 42 checks across all pages, exports, WebGL, mobile overflow, console errors
 node e2e/offline.cjs      # stop the core first: verifies honest error states
+node e2e/coarse_real_dem.cjs  # real coarse DEM (LDEM_16): radius auto-fix, relief, simulation with enlarged terrain window
 node e2e/real_data.cjs    # with a REAL LDEM_16 imported: globe relief, Apollo 11 probe (-1.9 km), south-pole analysis
 ```
 

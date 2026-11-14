@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { AnalysisParams, DatasetInfo } from '../../api/types'
 import { parseNum, TERRAIN_FIELDS, validateAll } from '../../lib/validation'
+import { RadiusHint } from '../ui/RadiusHint'
+import type { RadiusAdvice } from '../../lib/datasets'
 import { Button, NumberField, Panel, SelectField, SyntheticNotice, Toggle } from '../ui/ui'
 
 export interface TerrainFormState {
@@ -40,13 +42,13 @@ export function terrainFormErrors(f: TerrainFormState): Record<string, string> {
 
 const WEIGHT_LABELS: Record<keyof AnalysisParams['weights'], string> = { slope: 'Slope', roughness: 'Roughness', relief: 'Local relief', hazard: 'Hazard proximity' }
 
-export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, allowSynthetic, onAllowSynthetic, onRun, running, vehicleFootprint, vehicleTilt, onUseVehicle, autoRerun, onAutoRerun, hasResult }: {
+export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, allowSynthetic, onAllowSynthetic, onRun, running, vehicleFootprint, vehicleTilt, onUseVehicle, autoRerun, onAutoRerun, hasResult, radiusAdvice }: {
   value: TerrainFormState; onChange: (f: TerrainFormState) => void
   datasets: DatasetInfo[]; datasetId: string | null; onDataset: (id: string | null) => void
   allowSynthetic: boolean; onAllowSynthetic: (v: boolean) => void
   onRun: () => void; running: boolean
   vehicleFootprint: number | null; vehicleTilt: number | null; onUseVehicle: () => void
-  autoRerun: boolean; onAutoRerun: (v: boolean) => void; hasResult: boolean
+  autoRerun: boolean; onAutoRerun: (v: boolean) => void; hasResult: boolean; radiusAdvice: RadiusAdvice | null
 }) {
   const [touched, setTouched] = useState(false)
   const errors = useMemo(() => terrainFormErrors(value), [value])
@@ -61,7 +63,7 @@ export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, 
       <Panel title="Region">
         <div className="grid grid-cols-2 gap-3">
           <F k="latitude_deg" /><F k="longitude_deg" />
-          <div className="col-span-2"><F k="radius_m" /></div>
+          <div className="col-span-2"><F k="radius_m" /><RadiusHint advice={radiusAdvice} onApply={(r) => set('radius_m', String(r))} /></div>
           <div className="col-span-2">
             <SelectField label="DEM dataset" id="dataset" value={datasetId ?? ''} onChange={(v) => onDataset(v === '' ? null : v)}
               options={[{ value: '', label: 'Auto (best real dataset covering the point)' }, ...datasets.filter((d) => d.usable_as_dem).map((d) => ({ value: d.id, label: `${d.name}${d.synthetic ? ' — SYNTHETIC' : ''}` }))]} />

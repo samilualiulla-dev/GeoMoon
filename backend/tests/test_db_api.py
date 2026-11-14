@@ -348,3 +348,42 @@ def test_globe_endpoint_is_cached(client_pds):
     b = client_pds.get("/api/lunar/globe", params={"allow_synthetic": True, "rows": 18, "cols": 36}).json()
     assert a["elevation_m"] == b["elevation_m"]
     assert len(client_pds.app.state.ctx.globe_cache) == 1             # computed once, served from cache
+
+
+# ---- coarse real-like DEM: actionable errors, simulation does not die -------------------------------------
+def test_region_smaller_than_three_cells_gives_actionable_error(client_pds):
+    r = client_pds.get("/api/lunar/terrain", params={"latitude_deg": 18.7, "longitude_deg": -41.0, "radius_m": 1000, "dataset_id": "ldem_2", "allow_synthetic": True})
+    assert r.status_code == 422
+    e = r.json()["error"]
+    assert "smaller than 3x3 cells" in e["message"] and "radius_m >=" in e["message"] and "recommended" in e["message"]
+    d = e["details"]
+    assert d["min_radius_m"] == pytest.approx(1.5 * d["resolution_m_per_px"]) and d["recommended_radius_m"] == min(20 * d["resolution_m_per_px"], 200_000.0)
+    ok = client_pds.get("/api/lunar/terrain", params={"latitude_deg": 18.7, "longitude_deg": -41.0, "radius_m": d["recommended_radius_m"],
+                                                       "dataset_id": "ldem_2", "allow_synthetic": True, "max_grid": 16})
+    assert ok.status_code == 200, ok.text
+
+
+def test_sources_expose_min_and_recommended_radius(client_pds):
+    s = {d["id"]: d for d in client_pds.get("/api/data/sources").json()["installed"]}
+    d = s["ldem_2"]
+    assert d["min_radius_m"] == pytest.approx(1.5 * d["resolution_m_per_px"]) and d["recommended_radius_m"] == min(20 * d["resolution_m_per_px"], 200_000.0)   # capped at the API limit
+    assert s["plane_test"]["recommended_radius_m"] == pytest.approx(400.0)        # 20 cells of 20 m
+
+
+def test_simulation_enlarges_too_small_terrain_window_instead_of_failing(client_pds):
+    sc = client_pds.post("/api/spacecraft", json=SC).json()["id"]
+    body = {"spacecraft_id": sc, "initial_conditions": {"target_latitude_deg": 18.7, "target_longitude_deg": -41.0, "initial_altitude_m": 300, "initial_speed_m_s": 0},
+            "terrain": {"allow_synthetic": True, "radius_m": 1500, "dataset_id": "ldem_2"}}
+    sid = client_pds.post("/api/simulation/create", json=body).json()["id"]
+    j = client_pds.post(f"/api/simulation/{sid}/run", params={"wait": True}).json()
+    assert j["status"] == "completed", j.get("error")
+    s = j["summary"]
+    assert s["terrain_used"] and s["terrain_radius_m"] > 1500 and s["terrain_dataset"] == "ldem_2"
+    assert any("enlarged" in w for w in s["warnings"])
+    res = client_pds.get(f"/api/simulation/{sid}/results").json()
+    la = res["landing_assessment"]
+    sf = la["surface_assessment"]
+    assert sf["resolution_too_coarse"] is True and sf["status"] in ("not_assessed", "outside_limits")       # never "within_limits" on unresolved terrain
+    assert any("larger than the vehicle footprint" in i for i in sf["issues"])
+    assert la["overall"] != "within_all_assessed_limits" and la["uncertainty"]["level"] in ("high", "not_applicable_synthetic_terrain")
+    assert any("coarser than the landing footprint" in f for f in la["uncertainty"]["factors"])

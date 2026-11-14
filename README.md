@@ -23,9 +23,9 @@ cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies 
 
 ## Tests
 ```bash
-cd backend && python -m pytest -q          # 158 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
+cd backend && python -m pytest -q          # 161 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
-cd frontend && npm test                    # 47 unit tests;  node e2e/smoke.cjs = 42-check browser walkthrough (needs running core)
+cd frontend && npm test                    # 52 unit tests;  node e2e/smoke.cjs = 42-check browser walkthrough (needs running core)
 ```
 
 ## Data

@@ -23,6 +23,7 @@ export interface DatasetInfo {
   shape_rows_cols: [number, number]
   elevation_unit: string; vertical_reference_radius_m: number
   synthetic: boolean; quantity: string; unit: string; usable_as_dem: boolean
+  min_radius_m: number | null; recommended_radius_m: number | null
   status: string; warnings: string[]; file: string
 }
 
@@ -219,6 +220,7 @@ export interface SimSummary {
   assumptions: string[]; limitations: string[]; warnings: string[]
   spacecraft_derived: SpacecraftDerived
   terrain_used: boolean; terrain_synthetic: boolean
+  terrain_radius_m?: number | null; terrain_dataset?: string | null
 }
 export interface Simulation {
   id: number; status: SimStatus; spacecraft_id: number; region_id: number | null

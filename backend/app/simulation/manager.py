@@ -11,7 +11,7 @@ from ..core.errors import ConflictError, DataUnavailableError, GeoMoonError, Not
 from ..db import models as M
 from ..landing.evaluate import evaluate_landing
 from ..spacecraft.schemas import InitialConditions, SimSettings, SpacecraftConfig
-from ..terrain.service import persist_analysis, run_analysis
+from ..terrain.service import choose_dataset, persist_analysis, run_analysis
 from ..terrain.suitability import AnalysisParams
 from ..trajectory.dynamics import simulate
 
@@ -101,6 +101,12 @@ def _run(ctx: AppContext, db, sim: M.Simulation) -> None:
         p.setdefault("slope_limit_deg", cfg.max_tilt_deg)
         params = AnalysisParams(**p)
         try:
+            info = choose_dataset(ctx, ic.target_latitude_deg, ic.target_longitude_deg, opt.get("dataset_id"), bool(opt.get("allow_synthetic", False)))
+            need = 10.0 * (info.resolution_m_per_px or 0.0)          # >= 20 cells across the terrain window
+            if radius < need:
+                warnings.append(f"Terrain window enlarged from {radius:,.0f} m to {need:,.0f} m radius: dataset '{info.id}' has ~{info.resolution_m_per_px:,.0f} m cells, "
+                                "so the requested window held too few cells. At this resolution the touchdown-site assessment is regional-scale only.")
+                radius = need
             patch, analysis = run_analysis(ctx, lat=ic.target_latitude_deg, lon=ic.target_longitude_deg, radius_m=radius,
                                            dataset_id=opt.get("dataset_id"), params=params,
                                            allow_synthetic=bool(opt.get("allow_synthetic", False)),
@@ -126,7 +132,8 @@ def _run(ctx: AppContext, db, sim: M.Simulation) -> None:
             "target": {"latitude_deg": ic.target_latitude_deg, "longitude_deg": ic.target_longitude_deg},
             "terrain_dataset": patch.dataset.id if patch else None, "terrain_synthetic": bool(patch and patch.dataset.synthetic)}
     summary = {**out.summary, "warnings": warnings + out.warnings, "spacecraft_derived": cfg.derived(),
-               "terrain_used": bool(patch), "terrain_synthetic": bool(patch and patch.dataset.synthetic)}
+               "terrain_used": bool(patch), "terrain_synthetic": bool(patch and patch.dataset.synthetic),
+               "terrain_radius_m": radius if patch else None, "terrain_dataset": patch.dataset.id if patch else None}
     db.add(M.SimulationResult(simulation_id=sim.id, time_series=ts, final_state=out.final_state, trajectory_data=traj,
                               summary=summary, landing_assessment=assessment,
                               terrain_analysis_id=terrain_row.id if terrain_row else None))

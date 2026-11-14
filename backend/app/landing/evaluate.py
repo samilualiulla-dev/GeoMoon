@@ -67,8 +67,15 @@ def evaluate_surface(cfg: SpacecraftConfig, lat: float, lon: float, analysis: di
         issues.append("Terrain data around the touchdown point are incomplete (missing cells or window touches the patch edge).")
     if cls == "geometrically_unsuitable":
         issues.append("Touchdown cell is classified geometrically unsuitable by the terrain analysis (see explanation).")
+    cell = max(patch.dx_m, patch.dy_m)
+    coarse = cell > cfg.footprint_radius_m
+    if coarse:
+        issues.append(f"DEM cell size ({cell:,.0f} m) is larger than the vehicle footprint radius ({cfg.footprint_radius_m:.2f} m): the terrain under the "
+                      "landing gear is not resolved, so the values above are regional averages and the surface cannot be confirmed suitable. A finer DEM is needed.")
     status = (UNKNOWN if cls == "insufficient_data" or nan_frac > 0 else FAIL if any(k["status"] == FAIL for k in checks) or cls == "geometrically_unsuitable" else PASS)
-    return {"status": status, "terrain_classification": cls, "checks": checks, "issues": issues,
+    if coarse and status == PASS:
+        status = UNKNOWN                      # never report "within limits" for terrain the DEM cannot resolve
+    return {"status": status, "resolution_too_coarse": coarse, "terrain_classification": cls, "checks": checks, "issues": issues,
             "point_values": {"slope_deg": _f(layers["slope"][r, c]), "roughness_m": _f(layers["roughness"][r, c]),
                              "local_relief_m": _f(layers["local_relief"][r, c]), "elevation_m": _f(patch.elevation[r, c]),
                              "suitability": _f(layers["suitability"][r, c])},
@@ -134,6 +141,10 @@ def evaluate_landing(cfg: SpacecraftConfig, sim: SimulationOutput, analysis: dic
     if patch is not None:
         uncertainty["dem_resolution_m"] = {"dx": patch.dx_m, "dy": patch.dy_m}
         uncertainty["min_resolvable_feature_m"] = 2 * max(patch.dx_m, patch.dy_m)
+        if max(patch.dx_m, patch.dy_m) > cfg.footprint_radius_m:
+            uncertainty["factors"].append(f"DEM resolution ({max(patch.dx_m, patch.dy_m):,.0f} m/cell) is coarser than the landing footprint ({cfg.footprint_radius_m:.2f} m radius): "
+                                          "surface suitability at the touchdown point is not resolved.")
+            uncertainty["level"] = "high"
         if patch.dataset.synthetic:
             uncertainty["factors"].append("SYNTHETIC TERRAIN: surface results are not real lunar data.")
             uncertainty["level"] = "not_applicable_synthetic_terrain"

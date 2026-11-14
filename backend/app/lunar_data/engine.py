@@ -150,6 +150,16 @@ class TerrainPatch:
         return float(self.sample(lat, lon)[0])
 
 
+def _too_small(info: DatasetInfo, radius_m: float, cells: tuple[int, int]) -> ValidationFailure:
+    mn, rec = info.min_radius_m(), info.recommended_radius_m()
+    hint = f" Use radius_m >= {mn:,.0f} m (recommended ~{rec:,.0f} m)." if mn and rec else " Increase radius_m."
+    return ValidationFailure(
+        f"The region (radius {radius_m:,.0f} m) is smaller than 3x3 cells of dataset '{info.id}' (one cell is about "
+        f"{info.resolution_m_per_px:,.0f} m).{hint}",
+        details={"cells": list(cells), "resolution_m_per_px": info.resolution_m_per_px, "min_radius_m": mn, "recommended_radius_m": rec,
+                 "dataset": info.id})
+
+
 class LunarDataEngine:
     def __init__(self, registry: DatasetRegistry, max_cells: int = 4_000_000, cache_size: int = 16):
         self.registry = registry
@@ -198,8 +208,7 @@ class LunarDataEngine:
             win = Window(np.floor(win.col_off), np.floor(win.row_off), np.ceil(win.width) , np.ceil(win.height))
             w, h = int(win.width), int(win.height)
             if w < 3 or h < 3:
-                raise ValidationFailure("Requested region is smaller than 3x3 DEM cells; increase radius_m",
-                                        details={"cells": [h, w], "resolution_m_per_px": info.resolution_m_per_px})
+                raise _too_small(info, radius_m, (h, w))
             factor = max(1.0, np.sqrt(w * h / max_cells))
             oh, ow = max(3, int(np.ceil(h / factor))), max(3, int(np.ceil(w / factor)))
             resampling = Resampling.average if (oh, ow) != (h, w) else Resampling.nearest
@@ -235,8 +244,7 @@ class LunarDataEngine:
         cell = max(R * D2R * py_deg, 2.0 * radius_m / np.sqrt(max_cells))       # never finer than the data, never more than max_cells
         n = int(np.ceil(2.0 * radius_m / cell))
         if n < 3:
-            raise ValidationFailure("Requested region is smaller than 3x3 DEM cells; increase radius_m",
-                                    details={"cells": [n, n], "resolution_m_per_px": info.resolution_m_per_px})
+            raise _too_small(info, radius_m, (n, n))
         step = 2.0 * radius_m / n
         east = -radius_m + (np.arange(n) + 0.5) * step
         north = radius_m - (np.arange(n) + 0.5) * step

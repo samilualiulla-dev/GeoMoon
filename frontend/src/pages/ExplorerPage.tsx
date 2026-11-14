@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/endpoints'
 import type { ElevationPoint } from '../api/types'
@@ -9,6 +9,8 @@ import { asApiError, useFetch } from '../hooks/useFetch'
 import { LAYER_STYLES } from '../lib/colormap'
 import { fmt } from '../lib/format'
 import { globeElevationRange } from '../lib/globeMesh'
+import { pickDataset, radiusAdvice } from '../lib/datasets'
+import { RadiusHint } from '../components/ui/RadiusHint'
 import { formatLat, formatLon, inCoverageBox, wrapLon } from '../lib/geo'
 import { TERRAIN_FIELDS, validateNumber } from '../lib/validation'
 import { useInputs, useSession } from '../store/appStore'
@@ -40,6 +42,9 @@ export default function ExplorerPage() {
   const real = datasets.filter((d) => !d.synthetic && d.usable_as_dem), synth = datasets.filter((d) => d.synthetic && d.usable_as_dem)
   const supplementary = datasets.filter((d) => !d.usable_as_dem)
   const t = inputs.target
+  const advice = useMemo(() => radiusAdvice(pickDataset(datasets, t.lat, t.lon, { datasetId: inputs.datasetId, allowSynthetic: inputs.allowSynthetic }), Number(radiusS)), [datasets, t, inputs.datasetId, inputs.allowSynthetic, radiusS])
+  // A radius the core would refuse (< 3 cells) is replaced by the recommended one; valid choices are never overridden.
+  useEffect(() => { if (advice?.tooSmall) setRadiusS(String(Math.round(advice.recommended_m))) }, [advice?.dataset.id, advice?.tooSmall]) // eslint-disable-line react-hooks/exhaustive-deps
   const covering = useMemo(() => datasets.filter((d) => inCoverageBox(t.lat, t.lon, d.coverage)), [datasets, t])
 
   const select = (lat: number, lon: number) => { const la = Number(lat.toFixed(5)), lo = Number(wrapLon(lon).toFixed(5)); inputs.setTarget(la, lo); setLatS(String(la)); setLonS(String(lo)); setProbe(null); setError(null) }
@@ -137,6 +142,7 @@ export default function ExplorerPage() {
             <Toggle checked={inputs.allowSynthetic} onChange={inputs.setAllowSynthetic} label="Allow SYNTHETIC test terrain" />
             {inputs.allowSynthetic && <SyntheticNotice compact />}
             <NumberField spec={TERRAIN_FIELDS.radius_m} value={radiusS} onChange={setRadiusS} error={radErr} compact />
+            <RadiusHint advice={advice} onApply={(r) => setRadiusS(String(r))} />
             <div className="flex flex-wrap gap-2">
               <Button onClick={doProbe} disabled={busy !== null} data-testid="probe">{busy === 'probe' ? <Spinner /> : 'Probe elevation'}</Button>
               <Button variant="primary" onClick={loadRelief} disabled={busy !== null || !!radErr} data-testid="load-relief">{busy === 'relief' ? <Spinner label="Loading…" /> : 'Load regional relief'}</Button>
