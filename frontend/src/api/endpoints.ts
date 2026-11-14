@@ -1,6 +1,6 @@
 import { expectArray, expectEqualLengthColumns, expectKeys, request, isRecord } from './http'
 import type {
-  AnalysisResult, AnalyzeRequest, DataSources, ElevationPoint, Health, IgnitionSuggestion, LandingSiteResponse,
+  AnalysisResult, AnalyzeRequest, DataSources, GlobeData, ElevationPoint, Health, IgnitionSuggestion, LandingSiteResponse,
   Mission, MissionDetail, MissionReport, Region, SimResults, Simulation, SimulationCreate, Spacecraft, SpacecraftPayload,
   TerrainWindow, AnalysisParams,
 } from './types'
@@ -20,6 +20,9 @@ export const api = {
 
   terrain: (q: { latitude_deg: number; longitude_deg: number; radius_m: number; dataset_id?: string | null; max_grid?: number; allow_synthetic?: boolean }, signal?: AbortSignal) =>
     request<TerrainWindow>('GET', '/lunar/terrain', { query: q, timeoutMs: 60_000, signal, guard: expectKeys<TerrainWindow>('geometry', 'elevation_m', 'provenance') }),
+
+  globe: (q: { dataset_id?: string | null; rows?: number; cols?: number; allow_synthetic?: boolean }, signal?: AbortSignal) =>
+    request<GlobeData>('GET', '/lunar/globe', { query: q, timeoutMs: 120_000, signal, guard: expectKeys<GlobeData>('elevation_m', 'lat_north_deg', 'provenance') }),
 
   elevation: (q: { latitude_deg: number; longitude_deg: number; dataset_id?: string | null; allow_synthetic?: boolean }) =>
     request<ElevationPoint>('GET', '/lunar/elevation', { query: q, guard: expectKeys<ElevationPoint>('elevation_m') }),

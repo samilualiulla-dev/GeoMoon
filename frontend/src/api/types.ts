@@ -4,7 +4,7 @@ export interface ApiErrorBody { error: { code: string; message: string; details?
 
 export interface Health {
   status: string; service: string; api_version: string
-  datasets_installed: number; real_datasets_installed: number
+  datasets_installed: number; real_datasets_installed: number; supplementary_datasets?: number
 }
 
 export interface Coverage {
@@ -22,7 +22,8 @@ export interface DatasetInfo {
   crs: string | null; is_geographic_crs: boolean
   shape_rows_cols: [number, number]
   elevation_unit: string; vertical_reference_radius_m: number
-  synthetic: boolean; status: string; warnings: string[]; file: string
+  synthetic: boolean; quantity: string; unit: string; usable_as_dem: boolean
+  status: string; warnings: string[]; file: string
 }
 
 export interface KnownProduct { product: string; provider: string; url: string; format: string; coverage: string; notes: string }
@@ -126,6 +127,7 @@ export interface AnalysisSummary {
   hazard_fraction: number
   resolution_m: { dx: number; dy: number }
   min_resolvable_feature_m: number
+  warnings: string[]
 }
 
 export interface AnalysisResult {
@@ -280,4 +282,13 @@ export interface MissionReport {
   landing_assessment?: LandingAssessment | null
   terrain_analysis?: { id: number; slope: Stat4; roughness: Stat4; relief: Stat4; suitability: { stats: Stat4; class_fractions: Record<string, number>; candidates: Candidate[]; elevation: ElevationStats }; parameters: AnalysisParams; synthetic: boolean }
   disclaimer: string
+}
+
+export interface GlobeData {
+  rows: number; cols: number
+  lat_north_deg: number; lat_south_deg: number; lon_west_deg: number; lon_east_deg: number
+  reference_radius_m: number
+  elevation_m: Grid
+  statistics: ElevationStats
+  provenance: { dataset_id: string; name: string; provider: string; product: string; version: string | null; citation: string | null; url: string | null; resolution_m_per_px: number | null; synthetic: boolean; data_notice: string }
 }

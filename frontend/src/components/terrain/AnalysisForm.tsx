@@ -64,7 +64,7 @@ export function AnalysisForm({ value, onChange, datasets, datasetId, onDataset, 
           <div className="col-span-2"><F k="radius_m" /></div>
           <div className="col-span-2">
             <SelectField label="DEM dataset" id="dataset" value={datasetId ?? ''} onChange={(v) => onDataset(v === '' ? null : v)}
-              options={[{ value: '', label: 'Auto (best real dataset covering the point)' }, ...datasets.map((d) => ({ value: d.id, label: `${d.name}${d.synthetic ? ' — SYNTHETIC' : ''}` }))]} />
+              options={[{ value: '', label: 'Auto (best real dataset covering the point)' }, ...datasets.filter((d) => d.usable_as_dem).map((d) => ({ value: d.id, label: `${d.name}${d.synthetic ? ' — SYNTHETIC' : ''}` }))]} />
           </div>
           <div className="col-span-2 space-y-1.5">
             <Toggle checked={allowSynthetic} onChange={onAllowSynthetic} label="Allow SYNTHETIC test terrain" hint="Required to use datasets flagged synthetic" />

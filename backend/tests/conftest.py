@@ -59,3 +59,23 @@ def client(tmp_path, dem_dir):
     with TestClient(app) as c:
         c.app_state = app.state
         yield c
+
+
+@pytest.fixture
+def client_pds(tmp_path):
+    """Core with: a roughness product, a (synthetic-flagged) global LDEM-like elevation product, and the plane test DEM."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from test_pds import make_ldem, small_label, write_img   # noqa: WPS433
+    from app.lunar_data.pds import import_pds
+    from fastapi.testclient import TestClient
+    d = tmp_path / "dem"; d.mkdir()
+    write_dem(d / "plane_test.tif", plane(300, 2.0))
+    lbl = tmp_path / "in"; lbl.mkdir()
+    (lbl / "LDRM_16.LBL").write_text(small_label("LDRM_16", 90, 180, scale=0.001, offset=0))
+    write_img(lbl / "LDRM_16.IMG", np.full((90, 180), 3000))
+    import_pds(lbl / "LDRM_16.LBL", d)
+    import_pds(make_ldem(tmp_path), d, mark_synthetic=True)
+    s = Settings(); s.dem_dir = d; s.storage_dir = tmp_path / "storage"; s.database_url = f"sqlite:///{tmp_path / 't.db'}"
+    with TestClient(create_app(s)) as c:
+        yield c

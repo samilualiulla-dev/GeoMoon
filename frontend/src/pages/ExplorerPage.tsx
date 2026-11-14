@@ -8,6 +8,7 @@ import { Badge, Button, Empty, ErrorBanner, NumberField, Panel, SelectField, Spi
 import { asApiError, useFetch } from '../hooks/useFetch'
 import { LAYER_STYLES } from '../lib/colormap'
 import { fmt } from '../lib/format'
+import { globeElevationRange } from '../lib/globeMesh'
 import { formatLat, formatLon, inCoverageBox, wrapLon } from '../lib/geo'
 import { TERRAIN_FIELDS, validateNumber } from '../lib/validation'
 import { useInputs, useSession } from '../store/appStore'
@@ -32,7 +33,12 @@ export default function ExplorerPage() {
   const [msg, setMsg] = useState<string | null>(null)
 
   const datasets = sources.data?.installed ?? []
-  const real = datasets.filter((d) => !d.synthetic), synth = datasets.filter((d) => d.synthetic)
+  const globalAvail = datasets.some((d) => d.usable_as_dem && d.is_geographic_crs && d.coverage.lat_range_deg && d.coverage.lat_range_deg[1] - d.coverage.lat_range_deg[0] >= 170 && (!d.synthetic || inputs.allowSynthetic))
+  const globe = useFetch((s) => api.globe({ allow_synthetic: inputs.allowSynthetic, rows: 180, cols: 360 }, s), [inputs.allowSynthetic, globalAvail], globalAvail)
+  const [globeExag, setGlobeExag] = useState(10)
+  const globeRange = globe.data ? globeElevationRange(globe.data) : null
+  const real = datasets.filter((d) => !d.synthetic && d.usable_as_dem), synth = datasets.filter((d) => d.synthetic && d.usable_as_dem)
+  const supplementary = datasets.filter((d) => !d.usable_as_dem)
   const t = inputs.target
   const covering = useMemo(() => datasets.filter((d) => inCoverageBox(t.lat, t.lon, d.coverage)), [datasets, t])
 
@@ -61,7 +67,7 @@ export default function ExplorerPage() {
   }
 
   const windowMatchesAnalysis = analysis && terrainWindow && Math.abs(analysis.geometry.center.latitude_deg - terrainWindow.geometry.center.latitude_deg) < 1e-6 && Math.abs(analysis.geometry.center.longitude_deg - terrainWindow.geometry.center.longitude_deg) < 1e-6
-  const noRealData = sources.data && real.length === 0
+  const noRealData = sources.data && real.length === 0 && !globe.data
 
   return (
     <div className="flex h-full min-h-[640px] flex-col gap-3 p-4 lg:flex-row">
@@ -72,6 +78,7 @@ export default function ExplorerPage() {
             <Button variant={view === 'relief' ? 'primary' : 'secondary'} onClick={() => setView('relief')} disabled={!terrainWindow} data-testid="view-relief" title={terrainWindow ? '' : 'Load regional relief first'}>Regional relief (real DEM)</Button>
           </div>
           {view === 'globe' && <Toggle checked={grid} onChange={setGrid} label="Lat/lon grid (30°)" />}
+          {view === 'globe' && globe.data && <label className="text-[11px] text-muted">Relief ×{globeExag}<input type="range" aria-label="Globe vertical exaggeration" data-testid="globe-exag" min={1} max={40} step={1} value={globeExag} onChange={(e) => setGlobeExag(Number(e.target.value))} className="ml-2 w-28 align-middle accent-cyan" /></label>}
           {view === 'globe' && <Button onClick={() => setFocus((f) => f + 1)}>Centre on target</Button>}
           <div className="num ml-auto text-[11px] text-muted" data-testid="hover-coords">{hover ? `${formatLat(hover.lat)} · ${formatLon(hover.lon)}` : 'hover the globe for coordinates'}</div>
         </div>
@@ -81,14 +88,19 @@ export default function ExplorerPage() {
             {synth.length > 0 && ' A synthetic test DEM is present: enable “Allow synthetic” to try the pipeline in demo mode.'}
           </div>
         )}
+        {globe.loading && <Spinner label="Loading global elevation from the core…" />}
+        {globe.error && <ErrorBanner error={globe.error} title="Global relief unavailable" onRetry={globe.reload} />}
+        {globe.data?.provenance.synthetic && <SyntheticNotice compact />}
+        {supplementary.length > 0 && real.length === 0 && !globe.data && <div className="rounded border border-line bg-panel p-2 text-[11px] text-muted">Installed but not elevation: {supplementary.map((d) => `${d.product} (${d.quantity})`).join(', ')}. Install an elevation product (LOLA LDEM) to see relief.</div>}
         <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-line bg-space-950" data-testid="globe-wrap">
           {view === 'globe' ? (
             <>
-              <MoonGlobe selected={t} onSelect={select} onHover={setHover} showGrid={grid} datasets={datasets} regions={regions.data ?? []} candidates={analysis?.candidates} focusSignal={focus} />
+              <MoonGlobe selected={t} onSelect={select} onHover={setHover} showGrid={grid} datasets={datasets} regions={regions.data ?? []} candidates={analysis?.candidates} focusSignal={focus} globe={globe.data} exaggeration={globeExag} />
               <div className="pointer-events-none absolute bottom-2 left-2 space-y-0.5 rounded bg-space-950/80 p-2 text-[10px] text-muted">
                 <div><span className="mr-1 inline-block h-0.5 w-4 bg-cyan align-middle" />real DEM coverage <span className="ml-2 mr-1 inline-block h-0.5 w-4 bg-warn align-middle" />synthetic coverage</div>
                 <div><span className="mr-1 inline-block h-2 w-2 rounded-full bg-bad align-middle" />selected <span className="ml-2 mr-1 inline-block h-2 w-2 rounded-full bg-blue align-middle" />saved regions <span className="ml-2 mr-1 inline-block h-2 w-2 rounded-full bg-ok align-middle" />candidates</div>
-                <div className="text-dim">Reference sphere only — click to select a point. Drag = rotate · wheel = zoom · right-drag = pan.</div>
+                {globe.data && globeRange && <div className="text-ink/80" data-testid="globe-legend">Real relief: {globe.data.provenance.product} {globe.data.provenance.version ?? ''} · {fmt(globeRange[0], 0)} … {fmt(globeRange[1], 0)} m (viridis), radius exaggerated ×{globeExag}</div>}
+                <div className="text-dim">{globe.data ? 'Click to select a point.' : 'Reference sphere only — no relief is drawn without a global DEM. Click to select a point.'} Drag = rotate · wheel = zoom · right-drag = pan.</div>
               </div>
             </>
           ) : terrainWindow ? (

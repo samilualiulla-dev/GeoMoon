@@ -39,6 +39,7 @@ class DatasetInfo:
     lon_range: tuple[float, float] | None
     includes_pole: bool
     synthetic: bool
+    quantity: str
     nodata: float | None
     warnings: list[str] = field(default_factory=list)
     status: str = "available"
@@ -55,7 +56,8 @@ class DatasetInfo:
             "crs": self.crs_wkt, "is_geographic_crs": self.is_geographic,
             "shape_rows_cols": list(self.shape), "elevation_unit": "m",
             "vertical_reference_radius_m": self.meta.get("vertical_reference_radius_m", MOON_RADIUS_M),
-            "synthetic": self.synthetic, "status": self.status, "warnings": self.warnings,
+            "synthetic": self.synthetic, "quantity": self.quantity, "unit": self.meta.get("unit", "m"),
+            "usable_as_dem": self.quantity == "elevation", "status": self.status, "warnings": self.warnings,
             "file": self.path.name,
         }
 
@@ -119,13 +121,15 @@ def _inspect(path: Path) -> DatasetInfo:
         if not meta.get(k):
             warnings.append(f"metadata key '{k}' not provided")
     synthetic = bool(meta.get("synthetic", False))
+    if str(meta.get("quantity", "elevation")) != "elevation":
+        warnings.append(f"This raster is a '{meta.get('quantity')}' product, not elevation: it is listed for provenance but never used as a DEM")
     if synthetic:
         warnings.append("SYNTHETIC TEST/DEMO TERRAIN - NOT NASA OR ANY REAL LUNAR DATA")
     return DatasetInfo(
         id=_slug(path.stem), path=path, meta=meta, crs_wkt=crs.to_wkt(), is_geographic=geographic,
         bounds_native=(b.left, b.bottom, b.right, b.top), shape=shape, pixel_size_native=px,
         resolution_m_per_px=res, lat_range=lat_range, lon_range=lon_range, includes_pole=includes_pole,
-        synthetic=synthetic, nodata=nodata, warnings=warnings,
+        synthetic=synthetic, quantity=str(meta.get("quantity", "elevation")), nodata=nodata, warnings=warnings,
     )
 
 
@@ -159,7 +163,7 @@ class DatasetRegistry:
         from .engine import point_in_dataset
         cands = sorted(self.datasets.values(), key=lambda d: d.resolution_m_per_px or 1e12)
         for d in cands:
-            if d.synthetic and not allow_synthetic:
+            if d.quantity != "elevation" or (d.synthetic and not allow_synthetic):
                 continue
             if point_in_dataset(d, lat, lon):
                 return d

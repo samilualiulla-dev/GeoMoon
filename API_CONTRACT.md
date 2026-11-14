@@ -19,7 +19,7 @@ Base URL: `http://localhost:8000/api` · JSON · OpenAPI UI: `/docs` · schema: 
 ## System & data
 
 ### `GET /health`
-`{"status":"ok","service":"GeoMoon core","api_version":"1","datasets_installed":1,"real_datasets_installed":0}`
+`{"status":"ok","service":"GeoMoon core","api_version":"1","datasets_installed":1,"real_datasets_installed":0,"supplementary_datasets":0}` — counts cover **elevation** products only; roughness/slope rasters are counted in `supplementary_datasets`.
 
 ### `GET /data/sources[?refresh=true]`
 Installed DEMs with provenance + catalogue of known real products + files rejected (with reason).
@@ -27,7 +27,7 @@ Installed DEMs with provenance + catalogue of known real products + files reject
 {"installed":[{"id":"synthetic_demo_dem","name":"…","provider":"…","product":"…","version":"1","citation":"…","url":"…",
   "resolution_m_per_px":20.0,"coverage":{"lat_range_deg":[0.60,1.0],"lon_range_deg":[23.0,23.39],"includes_pole":false,"nominal":null},
   "crs":"<WKT>","is_geographic_crs":true,"shape_rows_cols":[600,600],"elevation_unit":"m","vertical_reference_radius_m":1737400.0,
-  "synthetic":true,"status":"available","warnings":["…"],"file":"synthetic_demo_dem.tif"}],
+  "synthetic":true,"quantity":"elevation","unit":"m","usable_as_dem":true,"status":"available","warnings":["…"],"file":"synthetic_demo_dem.tif"}],
  "rejected_files":{"x.tif":"x.tif: missing provenance sidecar x.meta.json"},
  "known_products":[{"product":"SLDEM2015","coverage":"approx. 60S-60N ONLY - does not cover the lunar poles", "...":"..."}],
  "dem_directory":"…","notice":"…"}
@@ -43,6 +43,11 @@ Response: `{"geometry":{…},"elevation_m":{rows,cols,data},"statistics":{min_m,
 `geometry` = `{rows, cols, cell_size_m:{dx,dy}, row0_is_north:true, center:{latitude_deg,longitude_deg}, corners:{north_west,north_east,south_west,south_east}, reference_radius_m, valid_fraction}`.
 Errors: 404 `data_unavailable` (no real DEM covers the point), 404 `out_of_coverage`, 422 region < 3×3 cells.
 
+### `GET /lunar/globe`
+Whole-Moon elevation grid for the 3-D globe. Query: `dataset_id?, rows=180 (18–360), cols=360 (36–720), allow_synthetic=false`.
+Only **global geographic elevation** datasets qualify (≥170° latitude, ~360° longitude); without one → `404 data_unavailable`; a roughness/slope product → 422.
+Response: `{rows, cols, lat_north_deg, lat_south_deg, lon_west_deg, lon_east_deg, reference_radius_m, elevation_m:{rows,cols,data}, statistics, provenance}`; row 0 = north, column *c* centre longitude = `lon_west + (c+0.5)/cols·(lon_east−lon_west)` (LOLA products span 0…360 E). Block-averaged; `null` = no data.
+
 ### `GET /lunar/elevation`
 Query `latitude_deg, longitude_deg, dataset_id?, allow_synthetic?` → `{"elevation_m":…,"dataset_id":…,"reference_radius_m":…,"synthetic":bool}` (404 if the point has no valid data).
 
@@ -56,7 +61,7 @@ Query `latitude_deg, longitude_deg, dataset_id?, allow_synthetic?` → `{"elevat
            "tpi_limit_m":5,"hazard_safe_distance_m":50,"footprint_radius_m":15,"suitable_threshold":0.7,
            "weights":{"slope":0.35,"roughness":0.2,"relief":0.2,"hazard":0.25},"max_candidates":5,"min_candidate_separation_m":null}}
 ```
-Response: `geometry`, `summary` (`elevation`, `slope_deg`, `roughness_m`, `local_relief_m`, `suitability` stats `{min,max,mean,p95}`, `class_fractions`, `hazard_fraction`, `resolution_m`, `min_resolvable_feature_m`),
+Response: `geometry`, `summary` (`warnings[]` — e.g. DEM cells larger than the landing footprint or ≥ 500 m/cell, `elevation`, `slope_deg`, `roughness_m`, `local_relief_m`, `suitability` stats `{min,max,mean,p95}`, `class_fractions`, `hazard_fraction`, `resolution_m`, `min_resolvable_feature_m`),
 `parameters` (echo), `candidates[]`, `layers{name:{unit,description,rows,cols,data,min,max}}`, `provenance`, `disclaimer`, `analysis_id` (if `save`).
 Layers: `elevation, slope, aspect, roughness, local_relief, tpi, hazard, hazard_distance, suitability, class, score_*, hazard_<kind>`. `class`: 0 geometrically_unsuitable, 1 geometrically_suitable, 2 insufficient_data.
 Candidate: `{row,col,lat,lon,elevation_m,footprint_mean_suitability,explanation}`; `explanation = {classification, suitability, components{slope|roughness|relief|hazard:{value,limit,unit,score,weight,weighted_contribution}}, notes[], disclaimer}`.

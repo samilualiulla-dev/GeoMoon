@@ -39,7 +39,7 @@ export default function DataSourcesPage() {
                   <tr key={d.id} className="border-t border-line align-top">
                     <td className="py-1.5 pr-2 font-medium">{d.name}<div className="num text-[10px] text-dim">{d.file}</div></td>
                     <td className="pr-2 text-muted">{d.provider}<div>{d.product}</div></td>
-                    <td className="pr-2"><Badge tone={d.synthetic ? 'warn' : 'ok'}>{d.synthetic ? 'synthetic test' : d.status}</Badge></td>
+                    <td className="pr-2"><div className="flex flex-col items-start gap-1"><Badge tone={d.synthetic ? 'warn' : 'ok'}>{d.synthetic ? 'synthetic test' : d.status}</Badge><Badge tone={d.usable_as_dem ? 'info' : 'neutral'} title={d.usable_as_dem ? 'Used for terrain analysis' : 'Listed for provenance only; not a DEM'}>{d.quantity}{d.usable_as_dem ? '' : ' · not a DEM'}</Badge></div></td>
                     <td className="num pr-2 text-muted">{d.coverage.lat_range_deg ? `lat ${fmt(d.coverage.lat_range_deg[0], 2)}…${fmt(d.coverage.lat_range_deg[1], 2)}` : '—'}<br />{d.coverage.lon_range_deg ? `lon ${fmt(d.coverage.lon_range_deg[0], 2)}…${fmt(d.coverage.lon_range_deg[1], 2)}` : ''}{d.coverage.includes_pole ? ' · pole' : ''}</td>
                     <td className="num pr-2">{d.resolution_m_per_px ? `${fmt(d.resolution_m_per_px, 1)} m/px` : 'unknown'}</td>
                     <td className="pr-2">{d.version ?? <span className="text-dim">not provided</span>}</td>

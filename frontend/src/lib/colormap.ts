@@ -24,6 +24,9 @@ export function sample(stops: Stops, t: number): RGB {
   return stops[stops.length - 1][1]
 }
 
+/** sRGB (0..1) -> linear (0..1). Three.js treats vertex colours as linear and re-encodes on output. */
+export function srgbToLinear(c: number): number { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+
 export const NODATA_RGB: RGB = [38, 46, 60]
 
 export interface LayerStyle {

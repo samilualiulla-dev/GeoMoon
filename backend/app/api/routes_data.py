@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..context import AppContext
-from ..core.errors import ConflictError, NotFoundError
+from ..core.errors import ConflictError, NotFoundError, ValidationFailure
 from ..db import models as M
 from ..lunar_data.catalog import KNOWN_PRODUCTS
 from ..terrain.service import choose_dataset, grid_to_json, patch_geometry, provenance
@@ -17,8 +17,10 @@ router = APIRouter()
 
 @router.get("/health", tags=["system"])
 def health(ctx: AppContext = Depends(get_ctx)):
-    return {"status": "ok", "service": "GeoMoon core", "api_version": "1", "datasets_installed": len(ctx.registry.datasets),
-            "real_datasets_installed": sum(1 for d in ctx.registry.datasets.values() if not d.synthetic)}
+    dems = [d for d in ctx.registry.datasets.values() if d.quantity == "elevation"]
+    return {"status": "ok", "service": "GeoMoon core", "api_version": "1", "datasets_installed": len(dems),
+            "real_datasets_installed": sum(1 for d in dems if not d.synthetic),
+            "supplementary_datasets": len(ctx.registry.datasets) - len(dems)}
 
 
 @router.get("/data/sources", tags=["data"])
@@ -76,6 +78,31 @@ def elevation(latitude_deg: float = Query(ge=-90, le=90), longitude_deg: float =
     z = ctx.data.elevation_at(info.id, latitude_deg, longitude_deg)
     return {"latitude_deg": latitude_deg, "longitude_deg": longitude_deg, "elevation_m": z, "dataset_id": info.id,
             "reference_radius_m": info.meta.get("vertical_reference_radius_m", 1_737_400.0), "synthetic": info.synthetic}
+
+
+@router.get("/lunar/globe", tags=["lunar"])
+def globe(dataset_id: str | None = None, rows: int = Query(180, ge=18, le=360), cols: int = Query(360, ge=36, le=720),
+          allow_synthetic: bool = False, ctx: AppContext = Depends(get_ctx)):
+    """Whole-Moon elevation grid for the 3-D globe (global geographic DEM only; block-averaged to rows x cols)."""
+    from ..core.errors import DataUnavailableError
+    cands = [ctx.registry.get(dataset_id)] if dataset_id else sorted(
+        (d for d in ctx.registry.datasets.values() if d.quantity == "elevation" and d.is_geographic
+         and d.lat_range and (d.lat_range[1] - d.lat_range[0]) >= 170 and (allow_synthetic or not d.synthetic)),
+        key=lambda d: d.resolution_m_per_px or 1e12)
+    if not cands:
+        raise DataUnavailableError("No global elevation dataset is installed (e.g. LOLA LDEM_16 / LDEM_64)",
+                                   details={"hint": "python backend/scripts/import_pds.py LDEM_16.LBL"})
+    info = cands[-1] if not dataset_id else cands[0]   # coarsest global dataset by default: light enough for a globe
+    if info.synthetic and not allow_synthetic:
+        raise ValidationFailure(f"Dataset '{info.id}' is SYNTHETIC test data; pass allow_synthetic=true to use it knowingly.")
+    g = ctx.data.read_global_grid(info.id, rows, cols)
+    z = g.pop("elevation")
+    from ..terrain.analysis import elevation_stats
+    return {**g, "elevation_m": grid_to_json(z, max(rows, cols)), "statistics": elevation_stats(z),
+            "provenance": {"dataset_id": info.id, "name": info.meta.get("name"), "provider": info.meta.get("provider"),
+                           "product": info.meta.get("product"), "version": info.meta.get("version"), "citation": info.meta.get("citation"),
+                           "url": info.meta.get("url"), "resolution_m_per_px": info.resolution_m_per_px, "synthetic": info.synthetic,
+                           "data_notice": "SYNTHETIC TEST TERRAIN - NOT REAL LUNAR DATA" if info.synthetic else "Real dataset; see citation"}}
 
 
 @router.post("/users", status_code=201, tags=["users"])

@@ -121,6 +121,8 @@ class LunarDataEngine:
         if radius_m <= 0:
             raise ValidationFailure("radius_m must be positive")
         info = self.registry.get(dataset_id)
+        if info.quantity != "elevation":
+            raise ValidationFailure(f"Dataset '{dataset_id}' is a {info.quantity} product, not elevation; it cannot be used as a DEM")
         max_cells = min(max_cells or self.max_cells, self.max_cells)
         key = (dataset_id, round(lat, 6), round(wrap_lon(lon), 6), round(radius_m, 2), max_cells)
         if key in self._cache:
@@ -133,6 +135,8 @@ class LunarDataEngine:
         return patch
 
     def _read(self, info: DatasetInfo, lat: float, lon: float, radius_m: float, max_cells: int) -> TerrainPatch:
+        if info.quantity != "elevation":
+            raise ValidationFailure(f"Dataset '{info.id}' is a {info.quantity} product, not elevation; it cannot be used as a DEM")
         if not point_in_dataset(info, lat, lon):
             raise OutOfCoverageError(
                 f"Point lat={lat}, lon={lon} lies outside dataset '{info.id}' ({info.meta.get('product')}) coverage",
@@ -188,3 +192,23 @@ class LunarDataEngine:
         if not np.isfinite(v):
             raise OutOfCoverageError("No valid elevation data at this point", details={"dataset": dataset_id})
         return v
+
+    def read_global_grid(self, dataset_id: str, rows: int, cols: int) -> dict:
+        """Whole-Moon elevation grid (block-averaged) for the globe. Only for global geographic-CRS elevation datasets."""
+        info = self.registry.get(dataset_id)
+        if info.quantity != "elevation":
+            raise ValidationFailure(f"Dataset '{dataset_id}' is a {info.quantity} product, not elevation")
+        l, b, r, t = info.bounds_native
+        if not info.is_geographic or (t - b) < 170.0 or (r - l) < 350.0:
+            raise OutOfCoverageError(f"Dataset '{dataset_id}' is not global (needs a geographic raster spanning >=170 deg lat and ~360 deg lon)",
+                                     details={"dataset": dataset_id, "coverage": info.to_dict()["coverage"]})
+        with rasterio.open(info.path) as ds:
+            arr = ds.read(1, out_shape=(rows, cols), masked=True, resampling=Resampling.average, out_dtype="float64")
+            nodata = ds.nodata
+        z = np.ma.filled(arr, np.nan).astype("float64")
+        if nodata is not None and np.isfinite(nodata):
+            z[np.isclose(z, nodata)] = np.nan
+        z[z < -1.0e30] = np.nan
+        z = z * float(info.meta.get("elevation_scale", 1.0)) + float(info.meta.get("elevation_offset", 0.0))
+        return {"rows": rows, "cols": cols, "lat_north_deg": float(t), "lat_south_deg": float(b), "lon_west_deg": float(l), "lon_east_deg": float(r),
+                "elevation": z, "reference_radius_m": float(info.meta.get("vertical_reference_radius_m", MOON_RADIUS_M))}

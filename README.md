@@ -23,14 +23,14 @@ cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies 
 
 ## Tests
 ```bash
-cd backend && python -m pytest -q          # 107 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
+cd backend && python -m pytest -q          # 122 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
-cd frontend && npm test                    # 38 unit tests;  node e2e/smoke.cjs = 37-check browser walkthrough (needs running core)
+cd frontend && npm test                    # 44 unit tests;  node e2e/smoke.cjs = 39-check browser walkthrough (needs running core)
 ```
 
 ## Data
-Put a real DEM + `.meta.json` into `datasets/dem/` — see [`documentation/DATA_SETUP.md`](documentation/DATA_SETUP.md).
-For a software-only demo: `python backend/scripts/make_demo_dem.py` (**synthetic**, opt-in via `allow_synthetic=true`, always flagged).
+Real NASA LOLA data: download `LDEM_16.IMG` + `LDEM_16.LBL`, then `python backend/scripts/import_pds.py PATH/LDEM_16.LBL` — see [`documentation/DATA_SETUP.md`](documentation/DATA_SETUP.md).
+For a software-only demo: `python backend/scripts/make_demo_dem.py --global` (**synthetic**, opt-in via `allow_synthetic=true`, always flagged).
 
 ## 60-second walkthrough (demo DEM)
 ```bash

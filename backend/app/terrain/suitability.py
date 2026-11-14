@@ -208,8 +208,21 @@ def analyze_patch(patch: TerrainPatch, params: AnalysisParams) -> dict:
         "hazard_fraction": float(layers["hazard"].mean()),
         "resolution_m": {"dx": patch.dx_m, "dy": patch.dy_m},
         "min_resolvable_feature_m": 2 * max(patch.dx_m, patch.dy_m),
+        "warnings": resolution_warnings(patch.dx_m, patch.dy_m, params),
     }
     return {"layers": layers, "candidates": cands, "summary": summary, "params": asdict(params), "footprint": res["footprint"]}
+
+
+def resolution_warnings(dx: float, dy: float, params: AnalysisParams) -> list[str]:
+    """Plain-language warnings when the DEM is too coarse for the requested landing-scale analysis."""
+    cell = max(dx, dy)
+    w: list[str] = []
+    if cell > params.footprint_radius_m:
+        w.append(f"DEM cell size ({cell:.0f} m) is larger than the landing footprint radius ({params.footprint_radius_m:g} m): "
+                 "slope, roughness and hazard values are regional averages and cannot show whether the footprint fits. Use a finer DEM for site selection.")
+    if cell >= 500:
+        w.append(f"At {cell:.0f} m/cell craters and slopes smaller than ~{2 * cell:.0f} m are not resolved; results are regional-scale context only.")
+    return w
 
 
 def _stats(a: np.ndarray) -> dict:

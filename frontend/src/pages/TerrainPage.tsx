@@ -104,6 +104,7 @@ export default function TerrainPage() {
               <span className="num text-dim">{formatLat(analysis.geometry.center.latitude_deg)} {formatLon(analysis.geometry.center.longitude_deg)} · analysis #{analysis.analysis_id}</span>
             </div>
             {syntheticResult && <SyntheticNotice />}
+            {analysis.summary.warnings?.map((w, i) => <div key={i} role="note" data-testid="resolution-warning" className="rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">⚠ {w}</div>)}
             <div className="grid gap-3 lg:grid-cols-[1fr_260px]">
               <Panel title="Terrain layers" padded={false}
                 actions={<div className="flex gap-1">{(['map', '3d'] as const).map((v) => <Button key={v} variant={view === v ? 'primary' : 'secondary'} onClick={() => setView(v)} data-testid={`view-${v}`}>{v === 'map' ? '2-D map' : '3-D relief'}</Button>)}</div>}>

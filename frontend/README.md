@@ -24,7 +24,7 @@ The dev server proxies `/api` to `http://127.0.0.1:8000` (override with `GEOMOON
 | Route | What it does |
 |---|---|
 | `/` Dashboard | core status, installed DEM counts (real vs synthetic), current target, saved missions/vehicles/regions, recent studies; empty states when nothing exists |
-| `/explorer` Lunar Explorer | 3-D reference sphere with lat/lon grid, dataset coverage outlines, saved regions, click-to-select coordinates; probe elevation, load **real regional relief** as a displaced 3-D mesh, save regions |
+| `/explorer` Lunar Explorer | 3-D sphere (plain reference sphere, or displaced by real global elevation when a global DEM is installed) with lat/lon grid, dataset coverage outlines, saved regions, click-to-select coordinates; probe elevation, load **real regional relief** as a displaced 3-D mesh, save regions |
 | `/terrain` Terrain Analysis | region/criteria form → `POST /terrain/analyze`; layers (elevation, slope, roughness, local relief, hazard, suitability, site classes) with toggles, opacity, legend, units, source; hover read-out; 3-D relief coloured by any layer; candidate sites with score explanation; weights re-run the analysis live |
 | `/spacecraft` Spacecraft | validated vehicle form (units, bounds and their origin in tooltips) + descent scenario/burn plan (constant, time-varying schedule, cut-off); derived values come from the core; ignition-altitude suggestion from the core |
 | `/simulation` Landing Simulation | creates + runs a simulation on the core, polls its status, replays the returned time series in 3-D (terrain from the DEM, trajectory, lander, flame) with Start / Pause / Resume / Reset / Replay, speed, scrubber, live telemetry, 6 charts, full landing assessment, save as mission, CSV/JSON export |
@@ -53,17 +53,17 @@ src/
 ## End-to-end check
 ```bash
 # core with the synthetic demo DEM, in another terminal:
-python ../backend/scripts/make_demo_dem.py /tmp/geomoon-demo/dem
+python ../backend/scripts/make_demo_dem.py /tmp/geomoon-demo/dem --global
 GEOMOON_DEM_DIR=/tmp/geomoon-demo/dem GEOMOON_STORAGE_DIR=/tmp/geomoon-demo/storage \
   GEOMOON_DATABASE_URL=sqlite:////tmp/geomoon-demo/e2e.db uvicorn app.asgi:app --port 8000   # from ../backend
 npm i -D playwright && npx playwright install chromium     # one time
 npm run dev &                                              # then:
-node e2e/smoke.cjs        # 37 checks across all pages, exports, WebGL, mobile overflow, console errors
+node e2e/smoke.cjs        # 39 checks across all pages, exports, WebGL, mobile overflow, console errors
 node e2e/offline.cjs      # stop the core first: verifies honest error states
 ```
 
 ## Known limitations
-* No global relief on the sphere until a global DEM tiling pipeline exists (planned).
+* The globe shows relief only if a global elevation DEM (e.g. LOLA `LDEM_16`) is installed; one 180×360 block-averaged grid, no tiling/LOD yet.
 * The lander is drawn upright and enlarged; attitude is not simulated by the core.
 * PDF export uses the browser's print dialog (print stylesheet), not a server-side PDF.
 * Mission comparison compares stored missions' metrics; it does not re-run analyses.

@@ -289,3 +289,44 @@ def test_datasource_provenance_persisted(client):
 def test_error_format_unknown_route(client):
     r = client.get("/api/nope")
     assert r.status_code == 404 and r.json()["error"]["code"] == "http_error"
+
+
+# ---- imported PDS products: quantity gating, globe, resolution warnings ---------------------------
+def test_sources_flag_non_elevation_products(client_pds):
+    s = {d["id"]: d for d in client_pds.get("/api/data/sources").json()["installed"]}
+    assert s["ldrm_16"]["quantity"] == "roughness" and s["ldrm_16"]["usable_as_dem"] is False
+    assert s["ldem_2"]["quantity"] == "elevation" and s["ldem_2"]["usable_as_dem"] and s["ldem_2"]["synthetic"]
+    assert s["ldrm_16"]["provider"].startswith("NASA LRO / LOLA") and "Smith" in s["ldrm_16"]["citation"]
+    assert s["ldem_2"]["coverage"]["includes_pole"] is True
+
+
+def test_roughness_product_refused_as_dem(client_pds):
+    r = client_pds.get("/api/lunar/terrain", params={"latitude_deg": 10, "longitude_deg": 20, "radius_m": 200000, "dataset_id": "ldrm_16"})
+    assert r.status_code == 422 and "not elevation" in r.json()["error"]["message"]
+    r = client_pds.post("/api/terrain/analyze", json={"latitude_deg": 10, "longitude_deg": 20, "radius_m": 200000, "dataset_id": "ldrm_16"})
+    assert r.status_code == 422
+
+
+def test_globe_endpoint(client_pds):
+    r = client_pds.get("/api/lunar/globe")
+    assert r.status_code == 404 and r.json()["error"]["code"] == "data_unavailable"       # only a synthetic global DEM -> not used silently
+    r = client_pds.get("/api/lunar/globe", params={"allow_synthetic": True, "rows": 36, "cols": 72})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert (j["rows"], j["cols"]) == (36, 72) and j["lat_north_deg"] == 90 and j["lon_west_deg"] == 0 and j["lon_east_deg"] == 360
+    assert j["provenance"]["synthetic"] and "NOT REAL" in j["provenance"]["data_notice"]
+    assert j["elevation_m"]["rows"] == 36 and j["statistics"]["min_m"] < j["statistics"]["max_m"]
+    assert client_pds.get("/api/lunar/globe", params={"dataset_id": "plane_test", "allow_synthetic": True}).status_code == 404   # not global
+    assert client_pds.get("/api/lunar/globe", params={"dataset_id": "ldrm_16"}).status_code == 422
+
+
+def test_coarse_dem_triggers_resolution_warning(client_pds):
+    r = client_pds.post("/api/terrain/analyze", json={"latitude_deg": 40.25, "longitude_deg": 50.25, "radius_m": 150000, "dataset_id": "ldem_2",
+                                                       "allow_synthetic": True, "params": {"window_m": 100, "footprint_radius_m": 15}, "save": False})
+    assert r.status_code == 200, r.text
+    w = r.json()["summary"]["warnings"]
+    assert any("larger than the landing footprint" in x for x in w) and any("regional-scale" in x for x in w)
+    # fine DEM: no resolution warnings
+    ok = client_pds.post("/api/terrain/analyze", json={"latitude_deg": 0.95, "longitude_deg": 23.05, "radius_m": 1000, "dataset_id": "plane_test",
+                                                        "allow_synthetic": True, "save": False, "params": {"footprint_radius_m": 30}}).json()
+    assert ok["summary"]["warnings"] == []                      # 20 m cells vs 30 m footprint radius: adequate

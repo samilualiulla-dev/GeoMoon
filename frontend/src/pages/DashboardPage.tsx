@@ -19,8 +19,9 @@ export default function DashboardPage() {
   const vehicles = useFetch(() => api.spacecraftList(), [])
   const sources = useFetch(() => api.dataSources(), [])
   const region = regions.data?.find((r) => r.id === regionId)
-  const real = sources.data?.installed.filter((d) => !d.synthetic).length ?? 0
-  const synth = sources.data?.installed.filter((d) => d.synthetic).length ?? 0
+  const real = sources.data?.installed.filter((d) => !d.synthetic && d.usable_as_dem).length ?? 0
+  const synth = sources.data?.installed.filter((d) => d.synthetic && d.usable_as_dem).length ?? 0
+  const supp = sources.data?.installed.filter((d) => !d.usable_as_dem).length ?? 0
   const offline = status.state === 'offline'
   return (
     <div className="space-y-4 p-4">
@@ -39,7 +40,7 @@ export default function DashboardPage() {
           {sources.loading ? <Spinner /> : sources.error ? <div className="text-xs text-bad">unavailable</div> : real + synth === 0 ? (
             <div className="text-xs"><Badge tone="warn">no DEM loaded</Badge><div className="mt-1 text-muted">Install a real DEM to enable terrain analysis.</div><Link className="text-cyan underline" to="/data">How →</Link></div>
           ) : (
-            <div className="grid grid-cols-2 gap-3" data-testid="data-status"><Stat label="Real datasets" value={real} tone={real ? 'ok' : 'warn'} /><Stat label="Synthetic (test)" value={synth} tone={synth ? 'warn' : undefined} /></div>
+            <div className="grid grid-cols-2 gap-3" data-testid="data-status"><Stat label="Real datasets" value={real} tone={real ? 'ok' : 'warn'} /><Stat label="Synthetic (test)" value={synth} tone={synth ? 'warn' : undefined} />{supp > 0 && <Stat label="Other products" value={supp} />}</div>
           )}
         </Panel>
         <Panel title="Current target">

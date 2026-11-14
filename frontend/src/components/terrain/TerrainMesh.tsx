@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { Grid } from '../../api/types'
-import { NODATA_RGB, type RGB } from '../../lib/colormap'
+import { NODATA_RGB, srgbToLinear, type RGB } from '../../lib/colormap'
 
 export interface MeshSpec {
   /** elevation grid, row 0 = north (downsampled grid returned by the core) */
@@ -35,7 +35,7 @@ export function TerrainMesh({ spec, zRef, exaggeration, colorOf, wireframe = fal
         valid[i] = ok ? 1 : 0
         pos[i * 3] = x; pos[i * 3 + 1] = ok ? ((z as number) - zRef) * exaggeration : 0; pos[i * 3 + 2] = -n
         const rgb = ok ? colorOf(r, c) : NODATA_RGB
-        col[i * 3] = rgb[0] / 255; col[i * 3 + 1] = rgb[1] / 255; col[i * 3 + 2] = rgb[2] / 255
+        col[i * 3] = srgbToLinear(rgb[0] / 255); col[i * 3 + 1] = srgbToLinear(rgb[1] / 255); col[i * 3 + 2] = srgbToLinear(rgb[2] / 255)
       }
     }
     const idx: number[] = []
