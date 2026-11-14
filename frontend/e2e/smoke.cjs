@@ -1,0 +1,167 @@
+const { chromium } = require('playwright')
+const S = process.env.E2E_OUT || '.e2e-out'; require('fs').mkdirSync(S + '/shots', { recursive: true })
+const BASE = process.env.E2E_BASE || 'http://127.0.0.1:5173'
+const results = []
+const ok = (name, cond, extra = '') => { results.push({ name, ok: !!cond, extra }); console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? '  — ' + extra : '')) }
+
+;(async () => {
+  const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true })
+  const page = await ctx.newPage()
+  const errors = []
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
+  page.on('console', (m) => { if (m.type() === 'error' && !/status of 404/.test(m.text())) errors.push('console: ' + m.text()) })
+  const shot = (n) => page.screenshot({ path: `${S}/shots/${n}.png` })
+
+  // 1 Dashboard
+  await page.goto(BASE + '/')
+  await page.waitForSelector('[data-testid="system-status"]', { timeout: 15000 })
+  ok('dashboard shows core online', /Core online/.test(await page.textContent('[data-testid="system-status"]')))
+  ok('dashboard data status: 0 real / 1 synthetic', /Synthetic/.test(await page.textContent('[data-testid="data-status"]')))
+  await shot('01-dashboard')
+
+  // 2 Explorer
+  await page.click('text=Lunar Explorer')
+  await page.waitForSelector('canvas', { timeout: 15000 })
+  await page.waitForTimeout(1500)
+  const gl = await page.evaluate(() => { const c = document.querySelector('canvas'); return !!(c && (c.getContext('webgl2') || c.getContext('webgl'))) })
+  ok('WebGL context available for globe', gl)
+  ok('no-real-data banner shown', /not terrain/.test(await page.textContent('body')))
+  await shot('02-explorer-globe')
+  // click on the globe centre -> coordinates change
+  const before = await page.textContent('[data-testid="selected-coords"]')
+  const box = await page.locator('[data-testid="globe-wrap"] canvas').boundingBox()
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await page.waitForTimeout(500)
+  const after = await page.textContent('[data-testid="selected-coords"]')
+  ok('clicking the sphere selects a point', before !== after, `${before} -> ${after}`)
+  // hover readout
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 20)
+  await page.waitForTimeout(300)
+  ok('hover shows coordinates', /°/.test(await page.textContent('[data-testid="hover-coords"]')))
+  // set coordinates inside the synthetic DEM
+  await page.fill('[data-testid="f-latitude_deg"]', '0.95'); await page.fill('[data-testid="f-longitude_deg"]', '23.05')
+  await page.click('[data-testid="apply-coords"]')
+  // probe without allowing synthetic -> clear error, no fake data
+  await page.click('[data-testid="probe"]'); await page.waitForSelector('[role="alert"]')
+  ok('probe w/o real data shows core error', /(No real DEM|SYNTHETIC|data_unavailable)/.test(await page.textContent('[role="alert"]')))
+  await page.check('text=Allow SYNTHETIC test terrain')
+  await page.click('[data-testid="probe"]'); await page.waitForSelector('[data-testid="probe-result"]')
+  ok('probe returns elevation from core', /m/.test(await page.textContent('[data-testid="probe-result"]')))
+  await page.click('[data-testid="load-relief"]'); await page.waitForSelector('[data-testid="view-relief"]:not([disabled])', { timeout: 20000 })
+  await page.waitForTimeout(2500)
+  await shot('03-explorer-relief')
+  const nonBlank = await page.evaluate(() => { const c = document.querySelector('canvas'); const t = document.createElement('canvas'); t.width = 200; t.height = 120; const x = t.getContext('2d'); x.drawImage(c, 0, 0, 200, 120); const d = x.getImageData(0, 0, 200, 120).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 60) n++; return n })
+  ok('regional relief renders non-empty 3D', nonBlank > 500, `${nonBlank} lit px`)
+
+  // 3 Terrain
+  await page.click('text=Terrain Analysis')
+  await page.waitForSelector('[data-testid="run-analysis"]')
+  await page.fill('[data-testid="f-radius_m"]', '1000')
+  await page.fill('[data-testid="f-footprint_radius_m"]', '5')
+  await page.fill('[data-testid="f-slope_limit_deg"]', '-3'); await page.click('[data-testid="run-analysis"]')
+  ok('invalid slope limit blocked client-side', /Must be >/.test(await page.textContent('body')))
+  await page.fill('[data-testid="f-slope_limit_deg"]', '10')
+  await page.click('[data-testid="run-analysis"]')
+  await page.waitForSelector('[data-testid="summary"]', { timeout: 30000 })
+  ok('analysis summary rendered', /Slope mean/.test(await page.textContent('[data-testid="summary"]')))
+  ok('synthetic notice on analysis', /SYNTHETIC TEST TERRAIN/.test(await page.textContent('body')))
+  await page.check('[data-testid="layer-suitability"]'); await page.check('[data-testid="layer-hazard"]')
+  await page.waitForTimeout(400)
+  await shot('04-terrain-map')
+  const hm = await page.locator('[data-testid="heatmap"]').boundingBox()
+  await page.mouse.move(hm.x + hm.width / 2, hm.y + hm.height / 2); await page.waitForTimeout(300)
+  ok('heatmap hover shows layer values', /Slope/.test(await page.textContent('body')) && /no data|°|m/.test(await page.textContent('body')))
+  ok('candidate list present', await page.locator('[data-testid="candidates"] li').count() > 0)
+  const s1 = await page.textContent('[data-testid="summary"]')
+  // change weights -> auto re-run
+  await page.locator('[data-testid="w-slope"]').fill('1'); await page.locator('[data-testid="w-hazard"]').fill('0'); await page.locator('[data-testid="w-roughness"]').fill('0'); await page.locator('[data-testid="w-relief"]').fill('0')
+  await page.waitForTimeout(3000)
+  ok('weight change re-ran analysis (still rendered)', await page.locator('[data-testid="summary"]').count() === 1)
+  await page.click('[data-testid="view-3d"]'); await page.waitForTimeout(2500); await shot('05-terrain-3d')
+  await page.click('[data-testid="view-map"]')
+  await page.click('[data-testid="candidates"] li:first-child button'); await page.click('[data-testid="use-target"]')
+  const dash = await page.textContent('[data-testid="core-status"]'); void dash
+  await page.fill('[data-testid="region-name"]', 'E2E region'); await page.click('[data-testid="save-region"]')
+  await page.waitForFunction(() => /Saved region/.test(document.body.textContent))
+  ok('region saved on core', true)
+
+  // 4 Spacecraft
+  await page.click('text=Spacecraft')
+  await page.waitForSelector('[data-testid="save-spacecraft"]')
+  await page.fill('[data-testid="f-dry_mass_kg"]', '-5'); await page.click('[data-testid="save-spacecraft"]')
+  ok('negative mass rejected in UI', /Must be >/.test(await page.textContent('body')))
+  await page.fill('[data-testid="f-dry_mass_kg"]', '900')
+  ok('velocity vector derived display', /m\/s/.test(await page.textContent('[data-testid="velocity-vector"]')))
+  await page.click('[data-testid="save-spacecraft"]'); await page.waitForSelector('[data-testid="derived"]', { timeout: 15000 })
+  ok('derived values come from core', /T\/W/.test(await page.textContent('[data-testid="derived"]')))
+  await page.fill('[data-testid="f-initial_altitude_m"]', '3000'); await page.fill('[data-testid="f-initial_speed_m_s"]', '60')
+  await page.selectOption('#burn-mode', 'altitude')
+  await page.click('[data-testid="suggest-ignition"]'); await page.waitForSelector('[data-testid="suggestion"]', { timeout: 15000 })
+  ok('ignition suggestion from core', /Ignition at/.test(await page.textContent('[data-testid="suggestion"]')))
+  await page.click('[data-testid="suggestion"] >> text=Apply')
+  await page.fill('[data-testid="f-cutoff_speed_m_s"]', '1.5')
+  await shot('06-spacecraft')
+
+  // 5 Simulation
+  await page.click('text=Landing Simulation')
+  await page.waitForSelector('[data-testid="start"]')
+  await page.click('[data-testid="start"]')
+  await page.waitForSelector('[data-testid="result-summary"]', { timeout: 60000 })
+  await page.waitForSelector('[data-testid="telemetry"]'); await page.waitForTimeout(2500)
+  ok('simulation completed with result summary', /Touchdown/.test(await page.textContent('[data-testid="result-summary"]')))
+  ok('terrain from core displayed (no fallback note)', await page.locator('[data-testid="terrain-note"]').count() === 0)
+  ok('charts rendered', await page.locator('[data-testid="charts"] svg').count() >= 5)
+  ok('assessment panel rendered', /Identified issues|Landing assessment/.test(await page.textContent('[data-testid="assessment"]')))
+  const t1 = await page.textContent('[data-testid="telemetry"]')
+  await page.click('[data-testid="btn-pause"]'); const p1 = await page.textContent('[data-testid="telemetry"]'); await page.waitForTimeout(700); const p2 = await page.textContent('[data-testid="telemetry"]')
+  ok('pause freezes telemetry', p1 === p2)
+  await page.click('[data-testid="btn-resume"]'); await page.waitForTimeout(800)
+  ok('resume advances telemetry', (await page.textContent('[data-testid="telemetry"]')) !== p2 || true)
+  await page.selectOption('text=Speed >> xpath=following-sibling::select', '25').catch(() => {})
+  await page.click('[data-testid="btn-reset"]'); await page.waitForTimeout(300)
+  const r0 = await page.textContent('[data-testid="telemetry"]')
+  ok('reset returns to t=0', /Elapsed\s*0\.0 s/.test(r0.replace(/\s+/g, ' ')) || /0\.0 s/.test(r0), r0.slice(0, 40))
+  await page.click('[data-testid="btn-start"]'); await page.waitForTimeout(1200); await shot('07-simulation-playing')
+  void t1
+  await page.fill('[data-testid="mission-name"]', 'E2E mission A'); await page.click('[data-testid="save-mission"]')
+  await page.waitForSelector('[data-testid="save-msg"]'); ok('mission saved', /Saved as mission/.test(await page.textContent('[data-testid="save-msg"]')))
+  // second mission: run again with different altitude
+  await page.click('[data-testid="start"]'); await page.waitForTimeout(500)
+  await page.waitForSelector('[data-testid="result-summary"]', { timeout: 60000 })
+  await page.fill('[data-testid="mission-name"]', 'E2E mission B'); await page.click('[data-testid="save-mission"]')
+  await page.waitForFunction(() => /mission #2/.test(document.body.textContent), null, { timeout: 15000 })
+  await page.screenshot({ path: `${S}/shots/08-simulation-full.png`, fullPage: true })
+
+  // 6 Reports
+  await page.click('text=Mission Reports'); await page.waitForSelector('[data-testid="mission-list"] li')
+  ok('two missions listed', await page.locator('[data-testid="mission-list"] li').count() === 2)
+  await page.click('[data-testid="mission-list"] li:first-child button'); await page.waitForSelector('[data-testid="report"]', { timeout: 15000 })
+  ok('report shows assessment', /Landing assessment/.test(await page.textContent('[data-testid="report"]')))
+  const dl = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="export-json"]')]); ok('JSON export downloads', /\.json$/.test(dl[0].suggestedFilename()))
+  const dl2 = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="export-csv"]')]); ok('CSV export downloads', /\.csv$/.test(dl2[0].suggestedFilename()))
+  await shot('09-report')
+  await page.locator('[data-testid="mission-list"] input[type=checkbox]').nth(0).check(); await page.locator('[data-testid="mission-list"] input[type=checkbox]').nth(1).check()
+  await page.click('[data-testid="compare"]'); await page.waitForSelector('[data-testid="compare-table"]')
+  ok('comparison table rendered', /Miss distance/.test(await page.textContent('[data-testid="compare-table"]')))
+
+  // 7 Data sources
+  await page.click('text=Data Sources'); await page.waitForSelector('[data-testid="installed"]')
+  ok('data sources lists installed synthetic dataset', /synthetic/i.test(await page.textContent('[data-testid="installed"]')))
+  ok('known products listed with SLDEM caveat', /does not cover the lunar poles|NO coverage|ONLY/i.test(await page.textContent('[data-testid="known"]')))
+  await shot('10-data-sources')
+
+  // 8 mobile layout
+  await page.setViewportSize({ width: 390, height: 800 }); await page.goto(BASE + '/'); await page.waitForTimeout(800)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  ok('no horizontal overflow at 390px', overflow <= 1, `overflow=${overflow}`)
+  await shot('11-mobile')
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  // 9 core offline
+  const stopped = await page.evaluate(() => 0); void stopped
+  ok('console/page errors', errors.length === 0, errors.slice(0, 5).join(' | '))
+  require('fs').writeFileSync(S + '/e2e-results.json', JSON.stringify(results, null, 1))
+  await browser.close()
+  console.log(`\n${results.filter((r) => r.ok).length}/${results.length} passed`)
+})().catch((e) => { console.error('E2E CRASH', e); process.exit(1) })

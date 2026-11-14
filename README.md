@@ -4,8 +4,8 @@ Research / educational platform: real lunar DEM → terrain analysis → landing
 numerical descent simulation → landing assessment → persisted studies, all served through a REST API.
 **Not certified flight software; a suitability score or simulation result is never a landing-safety guarantee.**
 
-This repository currently contains the **backend core** (`backend/`). The frontend (3-D globe, dashboard) will consume the API described in
-[`API_CONTRACT.md`](API_CONTRACT.md).
+Repository layout: **`backend/`** (computational core, FastAPI) and **`frontend/`** (React/Three.js console, see [`frontend/README.md`](frontend/README.md)).
+The UI talks only to the API described in [`API_CONTRACT.md`](API_CONTRACT.md).
 
 ## Run
 ```bash
@@ -16,10 +16,16 @@ uvicorn app.asgi:app --reload --port 8000
 ```
 Open http://localhost:8000/docs. Without installed DEMs the API starts normally and terrain endpoints answer `404 data_unavailable`.
 
+## Run the UI
+```bash
+cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies /api to :8000)
+```
+
 ## Tests
 ```bash
 cd backend && python -m pytest -q          # 107 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
+cd frontend && npm test                    # 38 unit tests;  node e2e/smoke.cjs = 37-check browser walkthrough (needs running core)
 ```
 
 ## Data
@@ -57,4 +63,4 @@ curl -s  "$B/simulation/1/results" | python -m json.tool | less
 
 ## Next steps
 Import real LOLA/LROC DEMs and crater catalogues; tiled global LOD for the 3-D globe; guidance-law models and attitude dynamics;
-gravity harmonics (GRAIL); Alembic migrations + PostgreSQL; task queue; PDF reports; frontend.
+gravity harmonics (GRAIL); Alembic migrations + PostgreSQL; task queue; server-side PDF reports; global DEM tiling for the globe.
