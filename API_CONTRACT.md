@@ -37,6 +37,8 @@ Installed DEMs with provenance + catalogue of known real products + files reject
 Request: `{"name":"Site A","latitude_deg":0.95,"longitude_deg":23.05,"radius_m":1000,"dataset_id":"plane_test"|null}` →
 `{"id":1,"name":…,"latitude_deg":…,"longitude_deg":…,"radius_m":…,"data_source_id":1|null,"dataset_key":"…"|null}`. Errors: 409 duplicate name, 404 unknown dataset.
 
+> **Grids near the poles.** For a geographic-CRS (lon/lat) DEM, if `|lat| + radius ≥ 80°` the core resamples the raster onto a local **azimuthal-equidistant square-metre grid centred on the request point** (bilinear, NaN stays NaN, cell never finer than the source). `geometry.cell_size_m.dx == dy`; `row0_is_north` holds in the *local* frame (when the centre is exactly on a pole, azimuth is measured from the requested longitude). Corners, candidate and hover lat/lon come from the same mapping, so they are exact.
+
 ### `GET /lunar/terrain`
 Query: `latitude_deg, longitude_deg, radius_m (≤200000), dataset_id?, max_grid=128 (8–512), allow_synthetic=false`.
 Response: `{"geometry":{…},"elevation_m":{rows,cols,data},"statistics":{min_m,max_m,mean_m,std_m,range_m,valid_fraction},"provenance":{…}}`.

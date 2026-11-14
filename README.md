@@ -23,9 +23,9 @@ cd frontend && npm install && npm run dev      # http://localhost:5173 (proxies 
 
 ## Tests
 ```bash
-cd backend && python -m pytest -q          # 122 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
+cd backend && python -m pytest -q          # 153 tests: coordinates, DEM reading, slope/roughness/suitability, gravity, RK4/DOP853,
                                            # fuel, touchdown, DB constraints, full API lifecycle
-cd frontend && npm test                    # 44 unit tests;  node e2e/smoke.cjs = 39-check browser walkthrough (needs running core)
+cd frontend && npm test                    # 47 unit tests;  node e2e/smoke.cjs = 42-check browser walkthrough (needs running core)
 ```
 
 ## Data
@@ -57,7 +57,8 @@ curl -s  "$B/simulation/1/results" | python -m json.tool | less
 * No real DEM is bundled (build environment could not reach NASA hosts); the demo DEM is synthetic.
 * Point-mass gravity, no attitude dynamics, no guidance; open-loop burn scenarios only; spherical Moon.
 * DEM metrics cannot detect boulders / craters below ~2 cells; hazard detection is geometric only (no imported crater catalogues yet).
-* Geographic-CRS DEMs refused above |lat| 85° (use polar products). PDS3 `.IMG` ingestion relies on GDAL and the sidecar's scale/offset — untested on real products.
+* The PDS3 importer is tested on the real `LDRM_16` and `LDEM_128` labels but **not yet on real `.IMG` bodies or polar-stereographic products** (no real data was reachable when written): the orientation of polar products must be checked once (see DATA_SETUP).
+* Within half a pixel of a pole the point elevation uses the nearest edge row (no row beyond it to interpolate).
 * SQLite only (schema is PostgreSQL-compatible); background tasks are in-process (no queue); no authentication; PDF export not implemented (JSON report only).
 * The ignition-altitude helper is an approximate constant-deceleration estimate; open-loop burns will not generally give a soft touchdown without tuning.
 

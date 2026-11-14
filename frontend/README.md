@@ -58,7 +58,7 @@ GEOMOON_DEM_DIR=/tmp/geomoon-demo/dem GEOMOON_STORAGE_DIR=/tmp/geomoon-demo/stor
   GEOMOON_DATABASE_URL=sqlite:////tmp/geomoon-demo/e2e.db uvicorn app.asgi:app --port 8000   # from ../backend
 npm i -D playwright && npx playwright install chromium     # one time
 npm run dev &                                              # then:
-node e2e/smoke.cjs        # 39 checks across all pages, exports, WebGL, mobile overflow, console errors
+node e2e/smoke.cjs        # 42 checks across all pages, exports, WebGL, mobile overflow, console errors
 node e2e/offline.cjs      # stop the core first: verifies honest error states
 ```
 
