@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .api import routes_data, routes_sim, routes_terrain
+from .api import routes_data, routes_orbital, routes_sim, routes_terrain
 from .context import AppContext
 from .core.config import Settings
 from .core.errors import GeoMoonError
@@ -36,6 +36,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _http(_: Request, e: StarletteHTTPException):
         return err(e.status_code, "http_error", str(e.detail))
 
-    for r in (routes_data.router, routes_terrain.router, routes_sim.router):
+    for r in (routes_data.router, routes_terrain.router, routes_sim.router, routes_orbital.router):
         app.include_router(r, prefix="/api")
     return app

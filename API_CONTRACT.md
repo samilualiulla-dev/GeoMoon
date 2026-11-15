@@ -155,6 +155,23 @@ Simulation object; when completed also `summary`.
 * `POST /missions` (201) `{"name","description?","region_id?","spacecraft_id?","simulation_id?","user_id?"}` · `GET /missions` · `GET /missions/{id}` (adds `simulation` + `landing_assessment`) · `GET /missions/{id}/report` (JSON report assembled only from stored results: spacecraft, region, simulation, final_state, landing_assessment, terrain_analysis, disclaimer).
 * `POST /users` `{"username"}` (201, 409 duplicate) · `GET /users`.
 
+## Orbital flight simulator (`/api/orbital`)
+All units SI (m, s, m/s, kg, N); frame ECI J2000 Earth-centred unless `frame=` says otherwise. Details: `documentation/ORBITAL_SIMULATOR.md`.
+
+* `GET /orbital/scenarios` → presets (editable), `directions`, `mission_kinds`, `graphs`.
+* `GET /orbital/bodies/positions?t_s=&epoch_iso=` → Earth rotation, Moon r/v/axes/SOI, Sun r. `GET /orbital/bodies/ephemerides?t0_s&t1_s&n&epoch_iso` → arrays incl. `moon_axes`, `earth_rotation_rad`.
+* `POST /orbital/plan` (body = simulation config; `?background=true` → `{job_id}`, poll `GET /orbital/plan/{job_id}`) → `{feasible, commands[], summary{…}, notes[], limitations[], suggested_duration_s}`.
+* `POST /orbital/simulations?apply_plan=` (201) body `{name, vehicle{dry_mass_kg,fuel_mass_kg,engines[{name,thrust_n,isp_s}]}, initial{kind,…}, mission{kind,target_altitude_m,target_lat_deg,target_lon_deg,duration_s}, options{include_moon,include_sun,include_earth_j2,include_drag,integrator,rtol,max_step_s,sample_dt_s,use_dem_collision,epoch_iso,…}, commands[]}`
+  → summary `{id,status,t_now_s,final_state,config,…, plan?}`. `GET /orbital/simulations` · `GET/DELETE /orbital/simulations/{id}` · `PUT …/{id}/config` (restart from t=0).
+* `POST …/{id}/run` `{until_s | duration_s | extend:true}` (default: to `mission.duration_s`) · `POST …/{id}/reset` `{keep_manual}`.
+* `POST …/{id}/control` `{t_s?, throttle, direction, reference, duration_s?, delta_v_mps?, vector?, auto_throttle?, horizon_s?}` — history before `t_s` preserved, future re-integrated.
+* `GET …/{id}/state?t_s=` → interpolated state, Moon/Sun, rotation, Moon axes, Moon-fixed & Earth-fixed lat/lon/alt, telemetry row.
+* `GET …/{id}/trajectory?t0_s&t1_s&max_points&frame=inertial|earth_fixed|moon_centered|moon_fixed` → `{t_s[], r_m[][3], moon_r_m[][3], speed_mps[], thrust_n[]}`.
+* `GET …/{id}/telemetry?series=a,b&max_points` → `{t_s[], series{name:[…]}, units{}}` (unknown series → 422 with the list). Series include alt/dist to Earth & Moon, speeds, vertical speeds, energy, a, e, periapsis/apoapsis, inclination, mass, fuel, thrust, g-load, gravity accelerations, Δv remaining.
+* `GET …/{id}/events` → recorded (impulse, burn_*, control_change, moon_soi_*, fuel_exhausted, moon_contact, earth_impact…) + derived (periselene, perigee…).
+* `WS …/{id}/stream` — client `{"action":"play|pause|seek|speed", "t_s", "speed"}`, server pushes `{"type":"state",…state fields…}` ~10 Hz.
+* Errors use the common envelope (422 `validation_failed` for bad configs/controls, 404 `not_found`).
+
 ## Changes vs. the initial endpoint list
 Added: `/lunar/elevation`, `/terrain/analysis/{id}[/layers/{layer}]`, `/trajectory/suggest-ignition`, `/missions/{id}/report`, `/users`, `POST /lunar/regions`.
 `/api/simulation/create|{id}/run` keep the requested names; `/simulation/{id}/results` gained `t`, `fields`, `stride`.

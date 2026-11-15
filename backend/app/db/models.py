@@ -125,3 +125,16 @@ class Mission(Base):
     spacecraft_id: Mapped[int | None] = mapped_column(ForeignKey("spacecraft_configurations.id"), nullable=True, index=True)
     simulation_id: Mapped[int | None] = mapped_column(ForeignKey("simulations.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OrbitalSimulation(Base):
+    """Orbital flight simulation: configuration + command history (JSON); sample arrays live in storage/orbital/<id>.npz."""
+    __tablename__ = "orbital_simulations"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    config: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32), default="ready")
+    t_now_s: Mapped[float] = mapped_column(Float, default=0.0)
+    events: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

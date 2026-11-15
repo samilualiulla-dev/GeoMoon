@@ -177,7 +177,7 @@ export default function SimulationPage() {
               layers={layers} trajMode={trajMode} cam={cam} fov={fov} follow={follow && !!results} className="absolute inset-0" />
             {busy && <div className="absolute inset-0 flex items-center justify-center bg-space-950/55 backdrop-blur-[1px]"><div className="rounded-lg border border-line-2 bg-panel px-5 py-4"><Spinner label={status === 'queued' ? 'Задача в очереди…' : 'Ядро интегрирует траекторию…'} /></div></div>}
             {!terrainWin && !busy && (
-              <div className="pointer-events-none absolute left-3 top-3 max-w-sm rounded-md border border-warn/40 bg-space-950/85 p-3 text-[12px] text-warn">
+              <div className="pointer-events-none absolute left-3 top-14 max-w-sm rounded-md border border-warn/40 bg-space-950/85 p-3 text-[12px] text-warn">
                 {previewErr ?? (!dataset ? 'Под целью нет реального DEM, поэтому рельеф не показан (синтетика не подставляется). Источники данных — в одноимённом разделе.' : inputs.scenario.terrain_enabled ? 'Загрузка рельефа…' : 'Связь с DEM выключена в настройках расчёта.')}
               </div>
             )}

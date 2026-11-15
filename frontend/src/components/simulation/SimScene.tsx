@@ -10,6 +10,9 @@ import { sampleAt } from '../../lib/series'
 import { LabelSprite } from '../terrain/LabelSprite'
 import { TerrainMesh } from '../terrain/TerrainMesh'
 import { SceneCanvas, type CamCmd } from './SceneCanvas'
+import { SimGlobalScene } from './SimGlobalScene'
+import { useInputs } from '../../store/appStore'
+import { useState } from 'react'
 
 export interface SceneLayers { terrain: boolean; grid: boolean; trajectory: boolean; vectors: boolean; labels: boolean; altitude: boolean }
 export const DEFAULT_LAYERS: SceneLayers = { terrain: true, grid: true, trajectory: true, vectors: true, labels: true, altitude: true }
@@ -90,7 +93,7 @@ interface Props {
 }
 
 /** Landing scene: real DEM relief (natural lunar grey), lander, trajectory, markers, vectors, grid. All numbers come from the core's results. */
-export function SimScene({ results, terrain, target, previewAltitude_m, exaggeration, layers, trajMode, cam, fov, follow, className }: Props) {
+function SimLocalScene({ results, terrain, target, previewAltitude_m, exaggeration, layers, trajMode, cam, fov, follow, className }: Props) {
   const { t } = usePlaybackSnapshot()
   const geom: Geometry | null = terrain?.geometry ?? null
   const center = geom ? { latitude_deg: geom.center.latitude_deg, longitude_deg: geom.center.longitude_deg } : { latitude_deg: target.lat, longitude_deg: target.lon }
@@ -207,3 +210,36 @@ export function SimScene({ results, terrain, target, previewAltitude_m, exaggera
   )
 }
 
+
+export type SceneView = 'auto' | 'sphere' | 'local'
+
+/** Chooses between the spherical global view (high altitude: the Moon is always a sphere) and the local terrain view (near the surface).
+ *  Auto switches when the lander is higher than ~0.6 of the terrain window (min 8 km). Both views show the same trajectory and target. */
+export function SimScene(props: Props) {
+  const { t } = usePlaybackSnapshot()
+  const { allowSynthetic } = useInputs()
+  const [view, setView] = useState<SceneView>('auto')
+  const geom = props.terrain?.geometry
+  const terrExtent = geom ? Math.max(geom.cols * geom.cell_size_m.dx, geom.rows * geom.cell_size_m.dy) : 0
+  const limit = Math.max(terrExtent * 0.6, 8000)
+  const alt = props.results ? sampleAt(props.results.time_series, t).distance_to_surface_m : props.previewAltitude_m ?? 0
+  // hysteresis: switch to sphere above `limit`, back to local only below 0.8*limit
+  const [sphere, setSphere] = useState(alt > limit)
+  useEffect(() => { if (alt > limit) setSphere(true); else if (alt < limit * 0.8) setSphere(false) }, [alt, limit])
+  const mode = view === 'auto' ? (sphere ? 'sphere' : 'local') : view
+  return (
+    <div className={props.className ?? 'relative h-full w-full'}>
+      {mode === 'sphere'
+        ? <SimGlobalScene results={props.results} terrain={props.terrain} target={props.target} previewAltitude_m={props.previewAltitude_m ?? 0} exaggeration={props.exaggeration}
+            trajectory={props.layers.trajectory} labelsOn={props.layers.labels} cam={props.cam} follow={props.follow} allowSynthetic={allowSynthetic} className="absolute inset-0" />
+        : <SimLocalScene {...props} className="absolute inset-0" />}
+      <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-line-2 bg-space-950/85 p-1 text-[12px] backdrop-blur" data-testid="scene-view" role="group" aria-label="Вид сцены">
+        {([['auto', 'Авто'], ['sphere', 'Сфера'], ['local', 'Рельеф']] as [SceneView, string][]).map(([v, l]) => (
+          <button key={v} type="button" data-testid={`view-${v}`} onClick={() => setView(v)} aria-pressed={view === v}
+            className={`min-h-8 rounded-md px-2.5 ${view === v ? 'bg-cyan/15 text-cyan' : 'text-muted hover:text-ink'}`}>{l}</button>
+        ))}
+        <span className="px-1.5 text-dim" data-testid="scene-mode">{mode === 'sphere' ? 'вид: сфера' : 'вид: локальный рельеф'}</span>
+      </div>
+    </div>
+  )
+}

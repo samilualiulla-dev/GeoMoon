@@ -8,6 +8,7 @@ const ExplorerPage = lazy(() => import('./pages/ExplorerPage'))
 const TerrainPage = lazy(() => import('./pages/TerrainPage'))
 const SpacecraftPage = lazy(() => import('./pages/SpacecraftPage'))
 const SimulationPage = lazy(() => import('./pages/SimulationPage'))
+const OrbitalPage = lazy(() => import('./pages/OrbitalPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const DataSourcesPage = lazy(() => import('./pages/DataSourcesPage'))
 
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="terrain" element={<TerrainPage />} />
             <Route path="spacecraft" element={<SpacecraftPage />} />
             <Route path="simulation" element={<SimulationPage />} />
+            <Route path="orbital" element={<OrbitalPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="data" element={<DataSourcesPage />} />
             <Route path="*" element={<div className="p-6 text-sm text-muted">Page not found.</div>} />

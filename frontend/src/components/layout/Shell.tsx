@@ -13,6 +13,7 @@ const NAV = [
   { to: '/terrain', label: 'Анализ рельефа', icon: 'layers' },
   { to: '/spacecraft', label: 'Аппараты', icon: 'rocket' },
   { to: '/simulation', label: 'Симуляция посадки', icon: 'target' },
+  { to: '/orbital', label: 'Орбитальный полёт', icon: 'rocket' },
   { to: '/reports', label: 'Отчёты миссий', icon: 'file' },
   { to: '/data', label: 'Источники данных', icon: 'database' },
 ]

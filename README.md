@@ -44,6 +44,9 @@ curl -sX POST "$B/simulation/1/run?wait=true"
 curl -s  "$B/simulation/1/results" | python -m json.tool | less
 ```
 
+## Orbital Flight Simulator (new)
+Page «Орбитальный полёт»: Earth–Moon(–Sun) physics on the core, 2-D map + synchronized 3-D scene, mission planner (Lambert + n-body shooting), manual/programmed engine control, time control, 9 graphs, persistence. See `documentation/ORBITAL_SIMULATOR.md`. The Landing Simulation now shows the Moon as a sphere at high altitude (global DEM + curved local patch) and the local terrain view near the surface.
+
 ## Documentation
 [`API_CONTRACT.md`](API_CONTRACT.md) · [`documentation/ARCHITECTURE.md`](documentation/ARCHITECTURE.md) · [`documentation/DATA_SETUP.md`](documentation/DATA_SETUP.md)
 
