@@ -24,7 +24,7 @@ export function SetupPanel() {
   return (
     <div className="space-y-3" data-testid="orbit-setup">
       <Section title="Сценарий" icon="rocket" testId="sec-scenario">
-        <Sel label="Готовый сценарий (можно менять)" value="" onChange={(id) => {
+        <Sel label="Готовый сценарий (можно менять)" value={cat?.scenarios.find((x) => x.config.name === config.name)?.id ?? ""} onChange={(id) => {
           const s = cat?.scenarios.find((x) => x.id === id); if (!s) return
           const c = s.config as Partial<OrbConfig>
           setConfig({ ...config, ...c, name: c.name ?? config.name, vehicle: { ...config.vehicle, ...(c.vehicle ?? {}), engines: c.vehicle?.engines ?? config.vehicle.engines },
