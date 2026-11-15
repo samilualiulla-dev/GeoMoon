@@ -144,6 +144,8 @@ def plan(cfg: SimConfig, *, max_seconds: float = 90.0) -> dict:
         return {"feasible": True, "commands": [], "summary": "Free flight: no planning performed.", "limitations": lim}
     if cfg.initial.kind not in ("earth_orbit", "cartesian") and m.kind in ("to_moon", "lunar_flyby", "lunar_orbit"):
         return _infeasible(f"Transfer planning needs an Earth-orbit start (got '{cfg.initial.kind}')", lim)
+    if m.kind == "landing" and cfg.initial.kind == "earth_orbit":
+        return _plan_full_landing(cfg, lim, t_wall)
     if m.kind in ("descent", "landing", "approach"):
         return _plan_descent(cfg, lim, t_wall)
 
@@ -268,11 +270,16 @@ def _plan_descent(cfg: SimConfig, lim, t_wall) -> dict:
     m = cfg.mission
     lim = lim + ["Descent uses an automatic retrograde braking controller (no terrain-relative guidance, no attitude dynamics).",
                  "Landing-site selection and hazard assessment belong to the Landing Simulation module."]
-    if cfg.initial.kind != "moon_orbit":
-        return _infeasible("Descent planning needs a Moon-orbit start (initial.kind = moon_orbit).", lim)
+    if cfg.initial.kind not in ("moon_orbit", "cartesian"):
+        return _infeasible("Descent planning needs a Moon-orbit start (initial.kind = moon_orbit or a Cartesian state near the Moon).", lim)
     if cfg.vehicle.thrust_max() <= 0:
         return _infeasible("The vehicle has no engine thrust.", lim)
-    r0 = R_MOON + cfg.initial.periapsis_alt_m
+    if cfg.initial.kind == "moon_orbit":
+        r0 = R_MOON + cfg.initial.periapsis_alt_m
+    else:   # assume a near-circular orbit: use the current distance to the Moon centre
+        from .ephemeris import Ephemeris
+        e0 = Ephemeris(cfg.options.epoch_iso)
+        r0 = float(np.linalg.norm(np.asarray(cfg.initial.r_m) - e0.moon_pos(0.0)))
     r_peri = R_MOON + 15_000.0
     a_t = 0.5 * (r0 + r_peri)
     v_c = math.sqrt(MU_MOON / r0)
@@ -341,3 +348,57 @@ def _plan_descent(cfg: SimConfig, lim, t_wall) -> dict:
         notes.append(f"Vehicle delta-v capacity {cap:.0f} m/s is lower than a typical deorbit+landing budget (~{total:.0f} m/s).")
     return {"feasible": bool(d["classification"] == "contact_speed_below_threshold"), "commands": [asdict_cmd(c) for c in cmds],
             "summary": summary, "notes": notes, "limitations": lim, "suggested_duration_s": float(s.t_now + 600)}
+
+
+def _plan_full_landing(cfg: SimConfig, lim, t_wall) -> dict:
+    """Earth orbit -> TLI -> LOI (circular lunar orbit) -> de-orbit + guided descent. Three chained plans, each verified by simulation."""
+    from datetime import datetime, timedelta, timezone
+    m = cfg.mission
+    stage1 = copy.deepcopy(cfg)
+    stage1.mission.kind = "lunar_orbit"
+    stage1.mission.target_altitude_m = m.target_altitude_m if m.target_altitude_m >= 20_000 else 100_000.0
+    p1 = plan(stage1)
+    if not p1["commands"]:
+        return {**p1, "notes": ["Stage 1 (transfer to lunar orbit) failed: " + "; ".join(p1.get("notes", []))], "limitations": lim + p1.get("limitations", [])}
+    cmds1 = [_build_cmd(c) for c in p1["commands"]]
+    c1 = copy.deepcopy(cfg)
+    c1.commands = copy.deepcopy(cmds1)
+    c1.mission.duration_s = p1["suggested_duration_s"] + 3600
+    c1.options.rtol = 1e-9
+    c1.options.sample_dt_max_s = 300.0
+    s1 = Simulation(c1)
+    t_cap = float(p1["summary"].get("loi_time_s", p1["suggested_duration_s"]))
+    t1 = t_cap + 1800.0                                  # half an hour after capture: settled in lunar orbit
+    s1.advance(t1)
+    y = s1.y[-1]
+    t_actual = s1.t_now
+    if s1.status not in ("ready", "completed"):
+        return _infeasible(f"Stage 1 verification ended with status '{s1.status}'", lim)
+    # stage 2: descent from the verified state; epoch shifted so that simulation time restarts at 0
+    epoch = datetime.fromisoformat(cfg.options.epoch_iso.replace("Z", "+00:00"))
+    if epoch.tzinfo is None:
+        epoch = epoch.replace(tzinfo=timezone.utc)
+    c2 = copy.deepcopy(cfg)
+    c2.options.epoch_iso = (epoch + timedelta(seconds=t_actual)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    c2.initial.kind, c2.initial.r_m, c2.initial.v_mps = "cartesian", y[:3].tolist(), y[3:6].tolist()
+    c2.vehicle.fuel_mass_kg = float(y[6])
+    c2.commands = []
+    p2 = _plan_descent(c2, lim, t_wall)
+    cmds2 = []
+    for c in p2.get("commands", []):
+        c = dict(c); c["t_start_s"] = c["t_start_s"] + t_actual; c["id"] = ""
+        cmds2.append(c)
+    summary = {**{f"transfer_{k}": v for k, v in p1["summary"].items() if isinstance(v, (int, float))},
+               **{f"descent_{k}": v for k, v in p2.get("summary", {}).items() if isinstance(v, (int, float))},
+               "descent_start_s": t_actual, "fuel_at_descent_start_kg": float(y[6])}
+    notes = list(p1.get("notes", [])) + list(p2.get("notes", []))
+    if y[6] <= 0:
+        notes.append("Propellant is exhausted after the transfer: a landing is impossible with this vehicle.")
+    return {"feasible": bool(p1["feasible"] and p2.get("feasible")), "commands": p1["commands"] + cmds2, "summary": summary, "notes": notes,
+            "limitations": lim + ["Full landing = three chained plans (TLI, LOI, de-orbit+descent), each impulsive/guided as described above."],
+            "suggested_duration_s": float(t_actual + p2.get("suggested_duration_s", 3600) + 600)}
+
+
+def _build_cmd(d: dict) -> Command:
+    from .model import _build
+    return _build(Command, d)

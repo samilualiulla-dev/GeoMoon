@@ -356,3 +356,17 @@ def test_api_control_and_validation(client):
     assert c.get("/api/orbital/scenarios").json()["scenarios"]
     eph = c.get("/api/orbital/bodies/ephemerides", params={"n": 10}).json()
     assert len(eph["t_s"]) == 10
+
+
+def test_full_mission_earth_to_moon_landing():
+    from app.orbital.planner import plan
+    c = config_from_dict({"mission": {"kind": "landing", "target_altitude_m": 100000, "duration_s": 6 * 86400},
+                          "vehicle": {"fuel_mass_kg": 60000, "dry_mass_kg": 8000, "engines": [{"name": "M", "thrust_n": 200000, "isp_s": 450}]}})
+    r = plan(c)
+    assert r["feasible"] and r["summary"]["descent_start_s"] > 2 * 86400
+    s = Simulation(config_from_dict({**c.to_dict(), "commands": r["commands"], "mission": {**c.to_dict()["mission"], "duration_s": r["suggested_duration_s"]}}))
+    s.advance(r["suggested_duration_s"])
+    types = [e["type"] for e in s.events]
+    assert types.count("impulse") == 3 and "moon_soi_entry" in types      # TLI, LOI, de-orbit
+    contact = [e for e in s.events if e["type"] == "moon_contact"][0]["details"]
+    assert contact["speed_mps"] < 5.0 and s.status == "landed"
