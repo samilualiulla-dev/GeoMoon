@@ -65,6 +65,15 @@ Page «Орбитальный полёт»: Earth–Moon(–Sun) physics on the 
 * SQLite only (schema is PostgreSQL-compatible); background tasks are in-process (no queue); no authentication; PDF export not implemented (JSON report only).
 * The ignition-altitude helper is an approximate constant-deceleration estimate; open-loop burns will not generally give a soft touchdown without tuning.
 
+
+presentation:https://canva.link/sjl2vtg1029xcgl
+<img width="1920" height="942" alt="image" src="https://github.com/user-attachments/assets/55bd2fab-82c6-4c52-b9e9-44067f0cb10c" />
+<img width="1920" height="940" alt="image" src="https://github.com/user-attachments/assets/d955743f-f968-4d4e-b428-d8d70a8807dd" />
+<img width="1920" height="933" alt="image" src="https://github.com/user-attachments/assets/757840c7-e8fd-45cf-8c27-777af2e9649a" />
+
+
+
+
 ## Next steps
 Import real LOLA/LROC DEMs and crater catalogues; tiled global LOD for the 3-D globe; guidance-law models and attitude dynamics;
 gravity harmonics (GRAIL); Alembic migrations + PostgreSQL; task queue; server-side PDF reports; global DEM tiling for the globe.
