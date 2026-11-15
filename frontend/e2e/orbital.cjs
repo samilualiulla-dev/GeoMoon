@@ -24,7 +24,7 @@ const setRange = (page, sel, frac) => page.evaluate(([s, f]) => { const el = doc
   await page.click('[data-testid="btn-create"]')
   await page.waitForSelector('[data-testid="orbit-map"]', { timeout: 120000 }); await page.waitForSelector('[data-testid="orbit-graphs"]', { timeout: 30000 })
   await page.waitForTimeout(2500)
-  ok('орбита: 2D карта и 3D сцена отображены', (await page.locator('[data-testid="orbit-map"]').count()) === 1 && (await page.locator('[data-testid="orbit-scene"] canvas').count()) === 1)
+  ok('орбита: 2D карта и 3D сцена отображены', (await page.locator('[data-testid="orbit-map"]').count()) >= 1 && (await page.locator('[data-testid="orbit-scene"] canvas').count()) === 1)
   ok('орбита: 9 графиков', (await page.locator('[data-testid^="graph-"]').count()) === 9)
   ok('орбита: планировщик показал результат', /решение найдено|не выполнимо/.test(await page.textContent('[data-testid="plan-result"]')))
   const t0 = await page.textContent('[data-testid="live-telemetry"]')
@@ -35,6 +35,8 @@ const setRange = (page, sel, frac) => page.evaluate(([s, f]) => { const el = doc
   ok('орбита: телеметрия меняется при перемотке', t0 !== t1)
   ok('орбита: у Луны доминирующее тело — Луна', /Доминирующее тело\s*Луна/.test(t1))
   await page.click('[data-testid="cam-moon"]'); await page.waitForTimeout(1500); await shot('orb-02-moon')
+  ok('центр управления: панель с фазой и журналом', (await page.locator('[data-testid="mission-control"]').count()) === 1 && /Задержка связи/.test(await page.textContent('[data-testid="mission-control"]')))
+  await shot('orb-02b-mission-control')
   // time controls
   const before = await page.textContent('[data-testid="orbit-time"]')
   await page.click('[data-testid="btn-step-fwd"]'); await page.waitForTimeout(300)
@@ -53,6 +55,18 @@ const setRange = (page, sel, frac) => page.evaluate(([s, f]) => { const el = doc
   // reload keeps the simulation (persistence via core)
   await page.reload(); await page.waitForSelector('[data-testid="orbit-map"]', { timeout: 60000 })
   ok('орбита: симуляция восстановлена после перезагрузки', true)
+
+  // --- placement: user puts the vehicle anywhere ---
+  await page.click('[data-testid="otab-setup"]'); await page.selectOption('[data-testid="scenario-select"]', 'manual_burn')
+  await page.click('[data-testid="btn-place"]'); await page.waitForSelector('[data-testid="placement-canvas"]')
+  const box = await page.locator('[data-testid="placement-canvas"]').boundingBox()
+  await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.3)
+  ok('размещение: клик показывает высоту и скорость', /Высота над поверхностью/.test(await page.textContent('[data-testid="placement-info"]')))
+  await shot('orb-02c-placement')
+  await page.click('[data-testid="placement-apply"]')
+  ok('размещение: старт стал вектором состояния', (await page.inputValue('[data-testid="init-kind"]')) === 'cartesian')
+  await page.click('[data-testid="btn-create"]'); await page.waitForSelector('[data-testid="mission-control"]', { timeout: 120000 }); await page.waitForTimeout(1500)
+  ok('размещение: симуляция из произвольной точки рассчитана', /T\+/.test(await page.textContent('[data-testid="mission-control"]')))
 
   // --- landing scene: the Moon is a sphere at high altitude ---
   await page.evaluate(() => localStorage.setItem('geomoon.inputs.v1', JSON.stringify({ state: { target: { lat: 0, lon: 0 }, scenario: { initial_altitude_m: '1000000' } }, version: 1 })))

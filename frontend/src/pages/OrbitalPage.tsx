@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/http'
 import { ControlPanel } from '../components/orbital/ControlPanel'
+import { MissionControl } from '../components/orbital/MissionControl'
 import { LiveTelemetry } from '../components/orbital/LiveTelemetry'
 import { OrbitGraphs } from '../components/orbital/OrbitGraphs'
 import { OrbitMap2D } from '../components/orbital/OrbitMap2D'
@@ -62,6 +63,7 @@ export default function OrbitalPage() {
           )}
         </aside>
         <section className="min-w-0 space-y-4">
+          {data && summary && <MissionControl data={data} events={allEvents} summary={summary} />}
           <div ref={box} className={`flex flex-col overflow-hidden rounded-lg border border-line bg-panel/95 ${full ? 'h-screen' : ''}`} data-testid="orbit-viewport">
             <div className="no-print flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 text-xs">
               <Segmented value={view} onChange={setView} testIdPrefix="view" options={[{ value: 'split', label: '2D + 3D' }, { value: 'map', label: '2D карта' }, { value: 'scene', label: '3D сцена' }]} />

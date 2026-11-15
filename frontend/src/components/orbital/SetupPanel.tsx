@@ -4,6 +4,7 @@ import { useOrbital } from '../../store/orbitalStore'
 import { fmtDistance } from '../../lib/orbital'
 import { Badge, Button, Section, Toggle } from '../ui/ui'
 import { Num, Sel } from './fields'
+import { PlacementModal } from './PlacementModal'
 
 const KIND_RU: Record<string, string> = { free_flight: 'Свободный полёт (без планировщика)', to_moon: 'Полёт к Луне', lunar_flyby: 'Пролёт Луны', lunar_orbit: 'Орбита Луны', approach: 'Сближение с координатами', descent: 'Спуск', landing: 'Посадка' }
 const INIT_RU: Record<string, string> = { earth_orbit: 'Орбита Земли', moon_orbit: 'Орбита Луны', lat_lon_surface: 'Стоит на поверхности', cartesian: 'Вектор состояния (ECI)' }
@@ -12,6 +13,7 @@ const INIT_RU: Record<string, string> = { earth_orbit: 'Орбита Земли'
 export function SetupPanel() {
   const { config, patchConfig, setConfig, createFromConfig, makePlan, plan, busy, simId } = useOrbital()
   const [cat, setCat] = useState<OrbCatalogue | null>(null)
+  const [placing, setPlacing] = useState(false)
   useEffect(() => { orbApi.catalogue().then(setCat).catch(() => setCat(null)) }, [])
   const i = config.initial, v = config.vehicle, m = config.mission, o = config.options
   const eng = v.engines[0]
@@ -56,6 +58,8 @@ export function SetupPanel() {
               {[0, 1, 2].map((k) => <Num key={'v' + k} label={`v${'xyz'[k]}`} unit="м/с" value={i.v_mps?.[k] ?? 0} onChange={(x) => patchConfig((c) => { const r = [...(c.initial.v_mps ?? [0, 0, 0])] as [number, number, number]; r[k] = x ?? 0; return { ...c, initial: { ...c.initial, v_mps: r } } })} />)}
             </div>
           )}
+          <Button size="sm" icon="target" className="w-full" onClick={() => setPlacing(true)} data-testid="btn-place">Разместить аппарат на карте…</Button>
+          <PlacementModal open={placing} onClose={() => setPlacing(false)} />
           <label className="block text-xs text-muted"><span className="mb-1 block">Эпоха (UTC), задаёт положение Луны и Солнца</span>
             <input type="text" value={o.epoch_iso} onChange={(e) => patchConfig((c) => ({ ...c, options: { ...c.options, epoch_iso: e.target.value } }))} className="num h-10 w-full rounded-md border border-line-2 bg-space-900 px-2.5 text-[13px] text-ink outline-none focus:border-cyan" data-testid="epoch" />
           </label>
