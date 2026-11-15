@@ -13,8 +13,9 @@ const INIT_RU: Record<string, string> = { earth_orbit: 'Орбита Земли'
 export function SetupPanel() {
   const { config, patchConfig, setConfig, createFromConfig, makePlan, plan, busy, simId } = useOrbital()
   const [cat, setCat] = useState<OrbCatalogue | null>(null)
+  const [catErr, setCatErr] = useState(false)
   const [placing, setPlacing] = useState(false)
-  useEffect(() => { orbApi.catalogue().then(setCat).catch(() => setCat(null)) }, [])
+  useEffect(() => { orbApi.catalogue().then((c) => { setCat(c); setCatErr(false) }).catch(() => { setCat(null); setCatErr(true) }) }, [])
   const i = config.initial, v = config.vehicle, m = config.mission, o = config.options
   const eng = v.engines[0]
   const thrust = v.engines.reduce((a, e) => a + e.thrust_n, 0)
@@ -29,6 +30,7 @@ export function SetupPanel() {
           setConfig({ ...config, ...c, name: c.name ?? config.name, vehicle: { ...config.vehicle, ...(c.vehicle ?? {}), engines: c.vehicle?.engines ?? config.vehicle.engines },
             initial: { ...config.initial, ...(c.initial ?? {}) }, mission: { ...config.mission, ...(c.mission ?? {}) }, options: { ...config.options, ...(c.options ?? {}) }, commands: [] })
         }} testId="scenario-select" options={[{ value: '', label: '— выбрать —' }, ...(cat?.scenarios ?? []).map((s) => ({ value: s.id, label: s.title }))]} />
+        {catErr && <p className="mt-2 rounded-md border border-warn/40 bg-warn/10 p-2 text-[12px] text-warn" data-testid="catalogue-error">Не удалось загрузить сценарии: ядро не отвечает или запущена старая версия бэкенда. Остановите бэкенд (Ctrl+C) и запустите заново: <code>python -m uvicorn app.asgi:app --port 8000</code>, затем обновите страницу (Ctrl+F5). Параметры ниже можно задать и вручную.</p>}
         <p className="mt-2 text-[11.5px] leading-snug text-dim">{cat?.scenarios.find((s) => s.config.name === config.name)?.description ?? 'Измените любые параметры ниже — готовые сценарии лишь отправная точка.'}</p>
       </Section>
       <Section title="Начальные условия" icon="target" testId="sec-initial">
